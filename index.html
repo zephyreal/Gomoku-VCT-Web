@@ -6,7 +6,7 @@
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Gomoku AI</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgl.min.js"></script>
 
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -157,7 +157,7 @@
 <div class="app">
 
   <h1>五子棋 AI</h1>
-  <div class="subtitle">ONNX Policy-Value Network · 15 × 15</div>
+  <div class="subtitle">ONNX Policy-Value Network · WebGL · 15 × 15</div>
 
   <div class="panel">
     <div id="status" class="status loading">正在加载 AI...</div>
@@ -182,7 +182,7 @@
   </div>
 
   <div class="tips">
-    移动端低内存版本：神经网络 Policy 最大概率合法位置落子。<br>
+    当前版本：WebGL 神经网络 Policy 最大概率合法位置落子。<br>
     模型链路稳定后，再接入 MCTS 和 C++ VCT。
   </div>
 
@@ -296,7 +296,7 @@ async function initApp() {
   initGame();
 
   ort.env.wasm.wasmPaths =
-    "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
+    "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
 
   ort.env.wasm.numThreads = 1;
   ort.env.wasm.proxy = false;
@@ -342,110 +342,72 @@ async function loadAIModel() {
   updateButtons();
 
   try {
-    setStatus("正在下载 gomoku.onnx...", "loading");
-    modelInfoEl.textContent =
-      "移动端低内存模式 · ORT Web 1.18.0 · 单线程 WASM";
+    setStatus("正在检查模型文件...", "loading");
 
-    // gomoku.onnx 本身很小，先读入内存。
-    // 大一些的 gomoku.onnx.data 不再由页面复制两份到 JS 内存，
-    // 而是让 ONNX Runtime 直接从 URL 加载。
-    const modelBytes =
-      await fetchBinary(
-        MODEL_URL,
-        "gomoku.onnx"
-      );
-
-    setStatus("正在创建低内存 AI 会话...", "loading");
+    const modelUrl =
+      new URL("./gomoku.onnx?v=webgl4", window.location.href).href;
 
     const dataUrl =
-      new URL(
-        DATA_URL + "?v=" + Date.now(),
-        window.location.href
-      ).href;
+      new URL("./gomoku.onnx.data?v=webgl4", window.location.href).href;
 
-    /*
-      你的 PyTorch 导出模型使用 external data。
-      不同导出器可能在 ONNX 内记录：
-        gomoku.onnx.data
-      或
-        ./gomoku.onnx.data
+    const modelCheck = await fetch(modelUrl, { cache: "no-store" });
+    if (!modelCheck.ok) {
+      throw new Error("gomoku.onnx 无法访问：HTTP " + modelCheck.status);
+    }
 
-      为了不在手机内存中同时挂载两份权重，
-      这里先尝试第一个路径；失败再尝试第二个。
-    */
-    const externalPaths = [
-      "gomoku.onnx.data",
-      "./gomoku.onnx.data"
+    const dataCheck = await fetch(dataUrl, { cache: "no-store" });
+    if (!dataCheck.ok) {
+      throw new Error("gomoku.onnx.data 无法访问：HTTP " + dataCheck.status);
+    }
+
+    setStatus("正在启动 WebGL AI...", "loading");
+    modelInfoEl.textContent =
+      "两个模型文件均可访问 · 正在创建 WebGL 会话";
+
+    const candidates = [
+      "./gomoku.onnx.data",
+      "gomoku.onnx.data"
     ];
 
     let lastError = null;
 
-    for (const externalPath of externalPaths) {
+    for (const externalPath of candidates) {
       try {
-        console.log(
-          "Try external data path:",
-          externalPath
+        aiSession = await ort.InferenceSession.create(
+          modelUrl,
+          {
+            executionProviders: ["webgl"],
+            externalData: [
+              {
+                path: externalPath,
+                data: dataUrl
+              }
+            ]
+          }
         );
-
-        aiSession =
-          await ort.InferenceSession.create(
-            modelBytes,
-            {
-              executionProviders: ["wasm"],
-
-              // 降低移动端额外内存占用
-              enableCpuMemArena: false,
-              enableMemPattern: false,
-              graphOptimizationLevel: "basic",
-
-              externalData: [
-                {
-                  path: externalPath,
-                  data: dataUrl
-                }
-              ]
-            }
-          );
 
         lastError = null;
         break;
 
       } catch (err) {
-        console.warn(
-          "External path failed:",
-          externalPath,
-          err
-        );
-
+        console.warn("WebGL externalData path failed:", externalPath, err);
         lastError = err;
         aiSession = null;
       }
     }
 
     if (!aiSession) {
-      throw lastError ||
-        new Error("无法创建 ONNX Runtime 会话");
+      throw lastError || new Error("WebGL 会话创建失败");
     }
 
     aiReady = true;
 
-    console.log(
-      "ONNX mobile session created successfully."
-    );
-    console.log(
-      "Inputs:",
-      aiSession.inputNames
-    );
-    console.log(
-      "Outputs:",
-      aiSession.outputNames
-    );
+    console.log("WebGL session created");
+    console.log("Inputs:", aiSession.inputNames);
+    console.log("Outputs:", aiSession.outputNames);
 
     modelInfoEl.textContent =
-      "AI 加载成功 · 移动端低内存模式" +
-      " · ORT 1.18.0" +
-      " · 单线程 WASM" +
-      " · 输入: " +
+      "AI 加载成功 · WebGL 模式 · 输入: " +
       aiSession.inputNames.join(", ") +
       " · 输出: " +
       aiSession.outputNames.join(", ");
@@ -454,26 +416,16 @@ async function loadAIModel() {
     updateButtons();
 
   } catch (err) {
-    console.error(
-      "AI load error:",
-      err
-    );
+    console.error("AI load error:", err);
 
     aiReady = false;
     aiSession = null;
 
-    setStatus(
-      "AI 模型加载失败",
-      "error"
-    );
+    setStatus("AI 模型加载失败", "error");
 
     modelInfoEl.textContent =
       "加载错误：" +
-      (
-        err && err.message
-          ? err.message
-          : String(err)
-      );
+      (err && err.message ? err.message : String(err));
 
     updateButtons();
   }
