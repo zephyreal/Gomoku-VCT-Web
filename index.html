@@ -1,13 +1,412 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gomoku VCT</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gomoku VCT</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    margin: 0;
+    background: #f4f4f4;
+    font-family: Arial, "Microsoft YaHei", sans-serif;
+    text-align: center;
+}
+
+.container {
+    max-width: 600px;
+    margin: auto;
+    padding: 15px;
+}
+
+h1 {
+    margin: 8px 0;
+    font-size: 25px;
+}
+
+.status {
+    margin: 10px;
+    font-size: 17px;
+    font-weight: bold;
+}
+
+canvas {
+    width: 100%;
+    max-width: 560px;
+    aspect-ratio: 1 / 1;
+    background: #d8a85c;
+    border-radius: 5px;
+    touch-action: none;
+}
+
+.buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+button {
+    border: 0;
+    border-radius: 7px;
+    padding: 11px 18px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+button:active {
+    transform: scale(0.97);
+}
+
+#undo {
+    background: #ddd;
+}
+
+#restart {
+    background: #333;
+    color: white;
+}
+
+#vct {
+    background: #1976d2;
+    color: white;
+}
+
+.info {
+    margin-top: 12px;
+    color: #666;
+    font-size: 14px;
+}
+</style>
 </head>
 
 <body>
-  <h1>五子棋 VCT</h1>
-  <p>GitHub Pages 部署测试成功！</p>
+
+<div class="container">
+
+<h1>五子棋 VCT</h1>
+
+<div class="status" id="status">
+当前：黑棋 ●
+</div>
+
+<canvas id="board"></canvas>
+
+<div class="buttons">
+    <button id="undo">悔棋</button>
+    <button id="vct">VCT 搜索</button>
+    <button id="restart">重新开始</button>
+</div>
+
+<div class="info">
+15 × 15 Gomoku VCT Search
+</div>
+
+</div>
+
+<script>
+
+const SIZE = 15;
+
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+
+let board = [];
+let history = [];
+let player = 1;
+let gameOver = false;
+
+function init() {
+    board = Array.from({length:SIZE}, () => Array(SIZE).fill(0));
+    history = [];
+    player = 1;
+    gameOver = false;
+
+    resize();
+    updateStatus();
+}
+
+function resize() {
+
+    const rect = canvas.getBoundingClientRect();
+
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.width * dpr;
+
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    draw();
+}
+
+function draw() {
+
+    const w = canvas.clientWidth;
+    const margin = w * 0.055;
+
+    const gap = (w - margin * 2) / (SIZE - 1);
+
+    ctx.clearRect(0,0,w,w);
+
+    ctx.fillStyle = "#d8a85c";
+    ctx.fillRect(0,0,w,w);
+
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 1;
+
+    for(let i=0;i<SIZE;i++) {
+
+        const p = margin + i * gap;
+
+        ctx.beginPath();
+        ctx.moveTo(margin,p);
+        ctx.lineTo(w-margin,p);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(p,margin);
+        ctx.lineTo(p,w-margin);
+        ctx.stroke();
+    }
+
+    const stars = [
+        [3,3],
+        [11,3],
+        [7,7],
+        [3,11],
+        [11,11]
+    ];
+
+    ctx.fillStyle="#222";
+
+    stars.forEach(([x,y])=>{
+        ctx.beginPath();
+        ctx.arc(
+            margin+x*gap,
+            margin+y*gap,
+            3,
+            0,
+            Math.PI*2
+        );
+        ctx.fill();
+    });
+
+    for(let y=0;y<SIZE;y++){
+        for(let x=0;x<SIZE;x++){
+
+            if(board[y][x]!==0)
+                drawStone(x,y,board[y][x],margin,gap);
+        }
+    }
+}
+
+function drawStone(x,y,color,margin,gap){
+
+    const cx = margin + x*gap;
+    const cy = margin + y*gap;
+
+    const r = gap*0.43;
+
+    const gradient =
+        ctx.createRadialGradient(
+            cx-r/3,
+            cy-r/3,
+            2,
+            cx,
+            cy,
+            r
+        );
+
+    if(color===1){
+
+        gradient.addColorStop(0,"#666");
+        gradient.addColorStop(1,"#000");
+
+    }else{
+
+        gradient.addColorStop(0,"#fff");
+        gradient.addColorStop(1,"#ccc");
+    }
+
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,0,Math.PI*2);
+
+    ctx.fillStyle=gradient;
+    ctx.fill();
+
+    ctx.strokeStyle="#555";
+    ctx.stroke();
+}
+
+function handleInput(e){
+
+    if(gameOver) return;
+
+    const rect = canvas.getBoundingClientRect();
+
+    const w = canvas.clientWidth;
+
+    const margin = w*0.055;
+
+    const gap =
+        (w-margin*2)/(SIZE-1);
+
+    let px =
+        e.clientX-rect.left;
+
+    let py =
+        e.clientY-rect.top;
+
+    let x =
+        Math.round((px-margin)/gap);
+
+    let y =
+        Math.round((py-margin)/gap);
+
+    if(
+        x<0 ||
+        x>=SIZE ||
+        y<0 ||
+        y>=SIZE
+    ) return;
+
+    if(board[y][x]!==0) return;
+
+    board[y][x]=player;
+
+    history.push({x,y,player});
+
+    if(checkWin(x,y,player)){
+
+        gameOver=true;
+
+        document.getElementById("status").innerText =
+            player===1
+            ? "黑棋获胜！"
+            : "白棋获胜！";
+
+        draw();
+
+        return;
+    }
+
+    player = player===1 ? 2 : 1;
+
+    updateStatus();
+
+    draw();
+}
+
+function checkWin(x,y,p){
+
+    const dirs=[
+        [1,0],
+        [0,1],
+        [1,1],
+        [1,-1]
+    ];
+
+    for(const [dx,dy] of dirs){
+
+        let count=1;
+
+        for(let s=1;s<5;s++){
+
+            let nx=x+dx*s;
+            let ny=y+dy*s;
+
+            if(
+                nx>=0 &&
+                nx<SIZE &&
+                ny>=0 &&
+                ny<SIZE &&
+                board[ny][nx]===p
+            )
+                count++;
+            else break;
+        }
+
+        for(let s=1;s<5;s++){
+
+            let nx=x-dx*s;
+            let ny=y-dy*s;
+
+            if(
+                nx>=0 &&
+                nx<SIZE &&
+                ny>=0 &&
+                ny<SIZE &&
+                board[ny][nx]===p
+            )
+                count++;
+            else break;
+        }
+
+        if(count>=5)
+            return true;
+    }
+
+    return false;
+}
+
+function updateStatus(){
+
+    document.getElementById("status").innerText =
+        player===1
+        ? "当前：黑棋 ●"
+        : "当前：白棋 ○";
+}
+
+canvas.addEventListener(
+    "pointerdown",
+    handleInput
+);
+
+document.getElementById("restart")
+.onclick = init;
+
+document.getElementById("undo")
+.onclick = () => {
+
+    if(history.length===0)
+        return;
+
+    const m =
+        history.pop();
+
+    board[m.y][m.x]=0;
+
+    player=m.player;
+
+    gameOver=false;
+
+    updateStatus();
+
+    draw();
+};
+
+document.getElementById("vct")
+.onclick = () => {
+
+    alert(
+        "下一步将在这里接入你的 C++ VCT 搜索算法"
+    );
+};
+
+window.addEventListener(
+    "resize",
+    resize
+);
+
+init();
+
+</script>
+
 </body>
 </html>
