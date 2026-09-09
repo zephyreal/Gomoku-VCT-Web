@@ -1,237 +1,294 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#f4f4f4">
-<title>五子棋 VCT</title>
-<style>
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-body {
-  margin: 0;
-  background: #f4f4f4;
-  font-family: Arial, "Microsoft YaHei", sans-serif;
-  color: #111;
-  text-align: center;
-}
-.container {
-  width: min(100%, 620px);
-  margin: 0 auto;
-  padding: 14px 12px 22px;
-}
-h1 { margin: 4px 0 8px; font-size: 28px; }
-.status { margin: 6px 0 10px; font-size: 18px; font-weight: 700; }
-.search-info {
-  min-height: 22px;
-  margin: 8px 0 2px;
-  font-size: 14px;
-  color: #555;
-}
-.board-wrap {
-  width: 100%;
-  padding: 10px;
-  background: #dda95a;
-  border-radius: 7px;
-}
-canvas {
-  display: block;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  background: #dda95a;
-  touch-action: none;
-}
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 9px;
-  margin-top: 14px;
-}
-button, select {
-  border: 0;
-  border-radius: 8px;
-  min-height: 44px;
-  font-size: 16px;
-}
-button { padding: 0 18px; cursor: pointer; }
-button:active { transform: scale(.98); }
-button:disabled { opacity: .55; cursor: default; transform: none; }
-#undo { background: #ddd; }
-#vct { background: #1976d2; color: #fff; }
-#stop { background: #a33; color: #fff; display: none; }
-#restart { background: #333; color: #fff; }
-.depth-row {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  font-size: 14px;
-  color: #555;
-}
-select { background: #fff; border: 1px solid #ccc; padding: 0 8px; }
-.footer { margin-top: 10px; color: #666; font-size: 14px; }
-.last-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #e53935;
-  position: absolute;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-@media (max-width: 430px) {
-  .container { padding-left: 8px; padding-right: 8px; }
-  h1 { font-size: 24px; }
-  .controls { gap: 7px; }
-  button { padding: 0 14px; font-size: 15px; }
-}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Gomoku VCT Web</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; min-height: 100%;
+      background: #f3f3f3;
+      font-family: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;
+      color: #222;
+    }
+    body { display: flex; justify-content: center; }
+    .app { width: 100%; max-width: 640px; padding: 12px 12px 22px; }
+    h1 { margin: 4px 0; text-align: center; font-size: 25px; }
+    .subtitle { text-align: center; color: #777; font-size: 13px; margin-bottom: 10px; }
+    .panel {
+      background: #fff; border-radius: 12px; padding: 10px 12px; margin-bottom: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.06);
+    }
+    .status { min-height: 24px; text-align: center; font-size: 17px; font-weight: 700; line-height: 24px; }
+    .status.loading { color: #1565c0; }
+    .status.error { color: #c62828; }
+    .status.ai { color: #7b1fa2; }
+    .status.win { color: #d84315; }
+    .model-info {
+      margin-top: 6px; text-align: center; color: #666; font-size: 12px;
+      line-height: 1.45; word-break: break-word;
+    }
+    .board-wrap { width: 100%; display: flex; justify-content: center; }
+    canvas {
+      width: 100%; max-width: 600px; aspect-ratio: 1/1; display: block;
+      background: #d2a05b; border-radius: 8px;
+      box-shadow: 0 3px 14px rgba(0,0,0,.15);
+      touch-action: none; user-select: none;
+    }
+    .buttons { display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; margin-top: 12px; }
+    button {
+      border: none; border-radius: 9px; padding: 12px 8px; font-size: 15px;
+      font-weight: 600; cursor: pointer; min-height: 44px;
+    }
+    button:active { transform: scale(.98); }
+    button:disabled { opacity: .48; cursor: not-allowed; transform: none; }
+    #undoBtn { background: #e3e3e3; color: #222; }
+    #reloadBtn { background: #1976d2; color: #fff; }
+    #restartBtn { background: #333; color: #fff; }
+    .legend {
+      display: flex; justify-content: center; gap: 18px; margin-top: 10px;
+      font-size: 13px; color: #555;
+    }
+    .dot {
+      display: inline-block; width: 13px; height: 13px; border-radius: 50%;
+      vertical-align: -2px; margin-right: 4px; border: 1px solid #555;
+    }
+    .dot.black { background: #111; }
+    .dot.white { background: #fff; }
+    .tips {
+      margin-top: 10px; font-size: 12px; line-height: 1.55; color: #777; text-align: center;
+    }
+    @media (max-width: 420px) {
+      .app { padding-left: 8px; padding-right: 8px; }
+      h1 { font-size: 22px; }
+      .status { font-size: 16px; }
+      button { font-size: 14px; padding-left: 4px; padding-right: 4px; }
+    }
+  </style>
 </head>
+
 <body>
-<div class="container">
-  <h1>五子棋 VCT</h1>
-  <div class="status" id="status">当前：黑棋 ●</div>
+<div class="app">
+  <h1>五子棋 AI</h1>
+  <div class="subtitle">ONNX Policy-Value Network · 15 × 15</div>
+
+  <div class="panel">
+    <div id="status" class="status loading">正在加载 AI 模型...</div>
+    <div id="modelInfo" class="model-info">模型：gomoku.onnx</div>
+  </div>
 
   <div class="board-wrap">
-    <canvas id="board" aria-label="15乘15五子棋棋盘"></canvas>
+    <canvas id="board"></canvas>
   </div>
 
-  <div class="search-info" id="searchInfo">VCT 引擎准备就绪</div>
-
-  <div class="controls">
-    <button id="undo">悔棋</button>
-    <button id="vct">VCT 搜索</button>
-    <button id="stop">停止</button>
-    <button id="restart">重新开始</button>
+  <div class="buttons">
+    <button id="undoBtn">悔棋</button>
+    <button id="reloadBtn">重新加载 AI</button>
+    <button id="restartBtn">重新开始</button>
   </div>
 
-  <div class="depth-row">
-    <label for="depth">最大搜索深度</label>
-    <select id="depth">
-      <option value="12">12</option>
-      <option value="14">14</option>
-      <option value="16">16</option>
-      <option value="18">18</option>
-      <option value="20" selected>20</option>
-    </select>
+  <div class="legend">
+    <span><span class="dot black"></span>你（黑棋）</span>
+    <span><span class="dot white"></span>AI（白棋）</span>
   </div>
 
-  <div class="footer">15 × 15 Gomoku · C++ VCT · WebAssembly</div>
+  <div class="tips">
+    当前版本直接使用神经网络 Policy 的最高概率合法位置落子。<br>
+    下一步可在此基础上接入 MCTS，并在 AI 落子前优先调用 C++ VCT。
+  </div>
 </div>
 
 <script>
+"use strict";
+
 const SIZE = 15;
-const SCORE_FIVE = 1000;
-const canvas = document.getElementById('board');
-const ctx = canvas.getContext('2d');
-const statusEl = document.getElementById('status');
-const searchInfoEl = document.getElementById('searchInfo');
-const undoBtn = document.getElementById('undo');
-const vctBtn = document.getElementById('vct');
-const stopBtn = document.getElementById('stop');
-const restartBtn = document.getElementById('restart');
-const depthEl = document.getElementById('depth');
+const HUMAN = 1;
+const AI = 2;
+const EMPTY = 0;
+const MODEL_URL = "./gomoku.onnx";
+
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const statusEl = document.getElementById("status");
+const modelInfoEl = document.getElementById("modelInfo");
+const undoBtn = document.getElementById("undoBtn");
+const restartBtn = document.getElementById("restartBtn");
+const reloadBtn = document.getElementById("reloadBtn");
 
 let board = [];
 let history = [];
-let player = 1;
+let currentPlayer = HUMAN;
 let gameOver = false;
-let searching = false;
-let worker = null;
+let aiThinking = false;
+let lastMove = null;
 
-function newWorker() {
-  if (worker) worker.terminate();
-  worker = new Worker('./vct-worker.js');
+let aiSession = null;
+let aiReady = false;
+let lastAIValue = null;
+let lastAIProb = null;
 
-  worker.onmessage = (event) => {
-    const data = event.data || {};
-    if (data.type === 'result') finishSearch(data);
-    if (data.type === 'error') {
-      setSearching(false);
-      searchInfoEl.textContent = '搜索错误：' + data.message;
-    }
-  };
-
-  worker.onerror = (event) => {
-    setSearching(false);
-    searchInfoEl.textContent = 'VCT 引擎加载失败，请刷新页面重试';
-    console.error(event);
-  };
+function setStatus(text, cls = "") {
+  statusEl.textContent = text;
+  statusEl.className = "status";
+  if (cls) statusEl.classList.add(cls);
 }
 
-function init() {
-  board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+function updateStatus() {
+  if (gameOver) return;
+  if (!aiReady) {
+    setStatus("正在等待 AI 模型...", "loading");
+    return;
+  }
+  if (aiThinking) {
+    setStatus("AI 思考中...", "ai");
+    return;
+  }
+  if (currentPlayer === HUMAN) {
+    let text = "轮到你：黑棋 ●";
+    if (lastAIValue !== null) text += "  |  AI Value = " + lastAIValue.toFixed(3);
+    setStatus(text);
+  } else {
+    setStatus("轮到 AI：白棋 ○", "ai");
+  }
+}
+
+function updateButtons() {
+  undoBtn.disabled = aiThinking || history.length === 0;
+  restartBtn.disabled = aiThinking;
+  reloadBtn.disabled = aiThinking;
+}
+
+function initGame() {
+  board = Array.from({ length: SIZE }, () => Array(SIZE).fill(EMPTY));
   history = [];
-  player = 1;
+  currentPlayer = HUMAN;
   gameOver = false;
-  setSearching(false);
-  newWorker();
-  resize();
+  aiThinking = false;
+  lastMove = null;
+  lastAIValue = null;
+  lastAIProb = null;
   updateStatus();
-  searchInfoEl.textContent = 'VCT 引擎准备就绪';
+  resizeCanvas();
+  updateButtons();
 }
 
-function setSearching(value) {
-  searching = value;
-  vctBtn.disabled = value || gameOver;
-  undoBtn.disabled = value;
-  restartBtn.disabled = value;
-  depthEl.disabled = value;
-  stopBtn.style.display = value ? 'inline-block' : 'none';
-  vctBtn.textContent = value ? '搜索中…' : 'VCT 搜索';
+async function initApp() {
+  initGame();
+
+  if (window.ort && ort.env && ort.env.wasm) {
+    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+  }
+
+  await loadAIModel();
 }
 
-function resize() {
+async function loadAIModel() {
+  aiReady = false;
+  aiSession = null;
+
+  setStatus("正在加载 AI 模型...", "loading");
+  modelInfoEl.textContent = "模型：gomoku.onnx";
+  updateButtons();
+
+  try {
+    aiSession = await ort.InferenceSession.create(MODEL_URL, {
+      executionProviders: ["wasm"]
+    });
+
+    aiReady = true;
+
+    console.log("ONNX model loaded.");
+    console.log("Inputs:", aiSession.inputNames);
+    console.log("Outputs:", aiSession.outputNames);
+
+    modelInfoEl.textContent =
+      "AI 模型加载成功 · 输入: " +
+      aiSession.inputNames.join(", ") +
+      " · 输出: " +
+      aiSession.outputNames.join(", ");
+
+    updateStatus();
+    updateButtons();
+
+  } catch (err) {
+    console.error("AI model load failed:", err);
+    aiReady = false;
+    aiSession = null;
+    setStatus("AI 模型加载失败，请检查 gomoku.onnx 是否已上传", "error");
+    modelInfoEl.textContent = "加载错误：" + (err && err.message ? err.message : String(err));
+    updateButtons();
+  }
+}
+
+function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
+  const cssSize = rect.width;
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(rect.width * dpr);
-  canvas.height = Math.round(rect.width * dpr);
+
+  canvas.width = Math.round(cssSize * dpr);
+  canvas.height = Math.round(cssSize * dpr);
+
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  draw();
+  drawBoard();
 }
 
-function geometry() {
+function getBoardGeometry() {
   const w = canvas.clientWidth;
   const margin = w * 0.055;
   const gap = (w - margin * 2) / (SIZE - 1);
   return { w, margin, gap };
 }
 
-function draw() {
-  const { w, margin, gap } = geometry();
+function drawBoard() {
+  const { w, margin, gap } = getBoardGeometry();
+
   ctx.clearRect(0, 0, w, w);
-  ctx.fillStyle = '#dda95a';
+  ctx.fillStyle = "#d2a05b";
   ctx.fillRect(0, 0, w, w);
 
-  ctx.strokeStyle = '#333';
+  ctx.strokeStyle = "#303030";
   ctx.lineWidth = 1;
+
   for (let i = 0; i < SIZE; i++) {
     const p = margin + i * gap;
-    ctx.beginPath(); ctx.moveTo(margin, p); ctx.lineTo(w - margin, p); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(p, margin); ctx.lineTo(p, w - margin); ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(margin, p);
+    ctx.lineTo(w - margin, p);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(p, margin);
+    ctx.lineTo(p, w - margin);
+    ctx.stroke();
   }
 
-  ctx.fillStyle = '#222';
-  [[3,3],[11,3],[7,7],[3,11],[11,11]].forEach(([x,y]) => {
+  const stars = [[3,3],[11,3],[7,7],[3,11],[11,11]];
+  ctx.fillStyle = "#222";
+
+  for (const [x, y] of stars) {
     ctx.beginPath();
-    ctx.arc(margin + x * gap, margin + y * gap, Math.max(2.5, gap * .07), 0, Math.PI * 2);
+    ctx.arc(margin + x * gap, margin + y * gap, Math.max(2.6, gap * 0.08), 0, Math.PI * 2);
     ctx.fill();
-  });
+  }
 
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
-      if (board[y][x] !== 0) drawStone(x, y, board[y][x], margin, gap);
+      if (board[y][x] !== EMPTY) drawStone(x, y, board[y][x], margin, gap);
     }
   }
 
-  if (history.length) {
-    const last = history[history.length - 1];
-    const cx = margin + last.x * gap;
-    const cy = margin + last.y * gap;
-    ctx.fillStyle = '#e53935';
+  if (lastMove) {
+    const cx = margin + lastMove.x * gap;
+    const cy = margin + lastMove.y * gap;
+
+    ctx.fillStyle = "#e53935";
     ctx.beginPath();
-    ctx.arc(cx, cy, Math.max(2.2, gap * .08), 0, Math.PI * 2);
+    ctx.arc(cx, cy, Math.max(2.4, gap * 0.08), 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -240,134 +297,305 @@ function drawStone(x, y, color, margin, gap) {
   const cx = margin + x * gap;
   const cy = margin + y * gap;
   const r = gap * 0.43;
-  const gradient = ctx.createRadialGradient(cx - r / 3, cy - r / 3, 2, cx, cy, r);
 
-  if (color === 1) {
-    gradient.addColorStop(0, '#666');
-    gradient.addColorStop(1, '#000');
+  const gradient = ctx.createRadialGradient(
+    cx - r * 0.35, cy - r * 0.35, r * 0.08,
+    cx, cy, r
+  );
+
+  if (color === HUMAN) {
+    gradient.addColorStop(0, "#777");
+    gradient.addColorStop(0.35, "#333");
+    gradient.addColorStop(1, "#050505");
   } else {
-    gradient.addColorStop(0, '#fff');
-    gradient.addColorStop(1, '#ccc');
+    gradient.addColorStop(0, "#fff");
+    gradient.addColorStop(0.55, "#f5f5f5");
+    gradient.addColorStop(1, "#c9c9c9");
   }
 
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = gradient;
   ctx.fill();
-  ctx.strokeStyle = '#555';
+
+  ctx.strokeStyle = color === HUMAN ? "#000" : "#777";
+  ctx.lineWidth = 1;
   ctx.stroke();
 }
 
-function placeMove(x, y, source = 'manual') {
-  if (gameOver || board[y][x] !== 0) return false;
+function placeMove(x, y, color, source) {
+  if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) return false;
+  if (board[y][x] !== EMPTY) return false;
 
-  const p = player;
-  board[y][x] = p;
-  history.push({ x, y, player: p });
+  board[y][x] = color;
+  history.push({ x, y, color, source });
+  lastMove = { x, y };
 
-  if (checkWin(x, y, p)) {
-    gameOver = true;
-    statusEl.textContent = p === 1 ? '黑棋获胜！' : '白棋获胜！';
-    vctBtn.disabled = true;
-    draw();
-    return true;
-  }
-
-  player = p === 1 ? 2 : 1;
-  updateStatus();
-  draw();
+  drawBoard();
+  updateButtons();
   return true;
 }
 
-function handleInput(e) {
-  if (gameOver || searching) return;
+function handleBoardPointer(e) {
+  if (!aiReady) {
+    setStatus("AI 模型尚未加载完成", "loading");
+    return;
+  }
+
+  if (gameOver || aiThinking || currentPlayer !== HUMAN) return;
+
   const rect = canvas.getBoundingClientRect();
-  const { margin, gap } = geometry();
-  const x = Math.round((e.clientX - rect.left - margin) / gap);
-  const y = Math.round((e.clientY - rect.top - margin) / gap);
+  const { margin, gap } = getBoardGeometry();
+
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+
+  const x = Math.round((px - margin) / gap);
+  const y = Math.round((py - margin) / gap);
+
   if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) return;
-  placeMove(x, y, 'manual');
+  if (board[y][x] !== EMPTY) return;
+
+  placeMove(x, y, HUMAN, "human");
+
+  if (checkWin(x, y, HUMAN)) {
+    gameOver = true;
+    setStatus("你获胜了！", "win");
+    drawBoard();
+    updateButtons();
+    return;
+  }
+
+  if (isBoardFull()) {
+    gameOver = true;
+    setStatus("平局。", "win");
+    updateButtons();
+    return;
+  }
+
+  currentPlayer = AI;
+  updateStatus();
+  setTimeout(normalAIMove, 80);
 }
 
-function checkWin(x, y, p) {
+function boardToTensor(aiColor) {
+  const total = SIZE * SIZE;
+  const data = new Float32Array(3 * total);
+  const opponent = aiColor === HUMAN ? AI : HUMAN;
+
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      const idx = y * SIZE + x;
+      const p = board[y][x];
+
+      if (p === aiColor) {
+        data[idx] = 1.0;
+      } else if (p === opponent) {
+        data[total + idx] = 1.0;
+      } else {
+        data[2 * total + idx] = 1.0;
+      }
+    }
+  }
+
+  return new ort.Tensor("float32", data, [1, 3, SIZE, SIZE]);
+}
+
+async function normalAIMove() {
+  if (!aiReady || !aiSession || gameOver || currentPlayer !== AI) return;
+
+  aiThinking = true;
+  updateStatus();
+  updateButtons();
+
+  await new Promise(resolve => setTimeout(resolve, 40));
+
+  try {
+    const inputTensor = boardToTensor(AI);
+    const inputName = aiSession.inputNames.includes("board")
+      ? "board"
+      : aiSession.inputNames[0];
+
+    const feeds = {};
+    feeds[inputName] = inputTensor;
+
+    const results = await aiSession.run(feeds);
+
+    const valueTensor = results.value || results[aiSession.outputNames[0]];
+    const policyTensor = results.policy || results[aiSession.outputNames[1]];
+
+    if (!valueTensor || !policyTensor) {
+      throw new Error("ONNX 输出中没有找到 value / policy");
+    }
+
+    const value = Number(valueTensor.data[0]);
+    const policy = policyTensor.data;
+    lastAIValue = value;
+
+    let bestIndex = -1;
+    let bestProb = -Infinity;
+
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        if (board[y][x] !== EMPTY) continue;
+
+        const idx = y * SIZE + x;
+        const p = Number(policy[idx]);
+
+        if (p > bestProb) {
+          bestProb = p;
+          bestIndex = idx;
+        }
+      }
+    }
+
+    if (bestIndex < 0) throw new Error("没有找到合法 AI 落子");
+
+    const x = bestIndex % SIZE;
+    const y = Math.floor(bestIndex / SIZE);
+    lastAIProb = bestProb;
+
+    console.log("AI move:", { x, y, value, probability: bestProb });
+
+    placeMove(x, y, AI, "onnx-policy");
+
+    if (checkWin(x, y, AI)) {
+      gameOver = true;
+      aiThinking = false;
+      setStatus("AI 获胜！  Value = " + value.toFixed(3), "win");
+      drawBoard();
+      updateButtons();
+      return;
+    }
+
+    if (isBoardFull()) {
+      gameOver = true;
+      aiThinking = false;
+      setStatus("平局。", "win");
+      updateButtons();
+      return;
+    }
+
+    currentPlayer = HUMAN;
+    aiThinking = false;
+
+    modelInfoEl.textContent =
+      "模型：gomoku.onnx" +
+      " · AI Value = " + value.toFixed(4) +
+      " · 本步 Policy = " + bestProb.toFixed(6) +
+      " · 落子 = (" + x + ", " + y + ")";
+
+    updateStatus();
+    updateButtons();
+
+  } catch (err) {
+    console.error("AI inference failed:", err);
+
+    aiThinking = false;
+    currentPlayer = HUMAN;
+
+    setStatus("AI 推理失败，请查看浏览器 Console", "error");
+    modelInfoEl.textContent =
+      "推理错误：" + (err && err.message ? err.message : String(err));
+
+    updateButtons();
+  }
+}
+
+function checkWin(x, y, player) {
   const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+
   for (const [dx, dy] of dirs) {
     let count = 1;
-    for (let s = 1; s < 5; s++) {
-      const nx = x + dx * s, ny = y + dy * s;
-      if (nx >= 0 && nx < SIZE && ny >= 0 && ny < SIZE && board[ny][nx] === p) count++;
+
+    for (let step = 1; step < 5; step++) {
+      const nx = x + dx * step;
+      const ny = y + dy * step;
+
+      if (
+        nx >= 0 && nx < SIZE &&
+        ny >= 0 && ny < SIZE &&
+        board[ny][nx] === player
+      ) count++;
       else break;
     }
-    for (let s = 1; s < 5; s++) {
-      const nx = x - dx * s, ny = y - dy * s;
-      if (nx >= 0 && nx < SIZE && ny >= 0 && ny < SIZE && board[ny][nx] === p) count++;
+
+    for (let step = 1; step < 5; step++) {
+      const nx = x - dx * step;
+      const ny = y - dy * step;
+
+      if (
+        nx >= 0 && nx < SIZE &&
+        ny >= 0 && ny < SIZE &&
+        board[ny][nx] === player
+      ) count++;
       else break;
     }
+
     if (count >= 5) return true;
   }
+
   return false;
 }
 
-function updateStatus() {
-  statusEl.textContent = player === 1 ? '当前：黑棋 ●' : '当前：白棋 ○';
-}
-
-function startSearch() {
-  if (gameOver || searching) return;
-  if (!worker) newWorker();
-
-  setSearching(true);
-  searchInfoEl.textContent = 'VCT 搜索中，请稍候…';
-
-  worker.postMessage({
-    type: 'search',
-    depth: Number(depthEl.value),
-    history: history.map(({ x, y }) => ({ x, y }))
-  });
-}
-
-function finishSearch(data) {
-  setSearching(false);
-
-  const seconds = (data.elapsedMs / 1000).toFixed(2);
-  const nodes = Math.round(data.nodes || 0).toLocaleString();
-  const hits = Math.round(data.ttHits || 0).toLocaleString();
-
-  if (data.score >= SCORE_FIVE && data.x >= 0 && data.y >= 0) {
-    searchInfoEl.textContent = `发现必胜着法：(${data.x}, ${data.y}) · ${seconds}s · ${nodes} 节点 · TT ${hits}`;
-    placeMove(data.x, data.y, 'ai');
-  } else {
-    searchInfoEl.textContent = `当前深度未发现必胜路径 · 得分 ${data.score} · ${seconds}s · ${nodes} 节点`;
+function isBoardFull() {
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      if (board[y][x] === EMPTY) return false;
+    }
   }
+  return true;
 }
 
-function stopSearch() {
-  if (!searching) return;
-  newWorker();
-  setSearching(false);
-  searchInfoEl.textContent = '搜索已停止';
-}
+function undoHumanAIPair() {
+  if (aiThinking || history.length === 0) return;
 
-canvas.addEventListener('pointerdown', handleInput);
-
-undoBtn.onclick = () => {
-  if (!history.length || searching) return;
-  const move = history.pop();
-  board[move.y][move.x] = 0;
-  player = move.player;
   gameOver = false;
-  vctBtn.disabled = false;
+
+  if (history.length > 0 && history[history.length - 1].color === AI) {
+    const m = history.pop();
+    board[m.y][m.x] = EMPTY;
+  }
+
+  if (history.length > 0 && history[history.length - 1].color === HUMAN) {
+    const m = history.pop();
+    board[m.y][m.x] = EMPTY;
+  }
+
+  if (history.length > 0) {
+    const m = history[history.length - 1];
+    lastMove = { x: m.x, y: m.y };
+  } else {
+    lastMove = null;
+  }
+
+  currentPlayer = HUMAN;
+  lastAIValue = null;
+  lastAIProb = null;
+
+  modelInfoEl.textContent = aiReady
+    ? "AI 模型已加载 · 已悔棋"
+    : "模型：gomoku.onnx";
+
+  drawBoard();
   updateStatus();
-  searchInfoEl.textContent = '已悔棋';
-  draw();
-};
+  updateButtons();
+}
 
-vctBtn.onclick = startSearch;
-stopBtn.onclick = stopSearch;
-restartBtn.onclick = init;
-window.addEventListener('resize', resize);
+canvas.addEventListener("pointerdown", handleBoardPointer);
+window.addEventListener("resize", resizeCanvas);
+undoBtn.addEventListener("click", undoHumanAIPair);
 
-init();
+restartBtn.addEventListener("click", () => {
+  initGame();
+  if (aiReady) modelInfoEl.textContent = "AI 模型已加载 · 新棋局";
+});
+
+reloadBtn.addEventListener("click", async () => {
+  await loadAIModel();
+});
+
+initApp();
 </script>
 </body>
 </html>
