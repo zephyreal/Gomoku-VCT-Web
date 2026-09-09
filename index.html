@@ -2,411 +2,372 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Gomoku VCT</title>
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#f4f4f4">
+<title>五子棋 VCT</title>
 <style>
-* {
-    box-sizing: border-box;
-    -webkit-tap-highlight-color: transparent;
-}
-
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 body {
-    margin: 0;
-    background: #f4f4f4;
-    font-family: Arial, "Microsoft YaHei", sans-serif;
-    text-align: center;
+  margin: 0;
+  background: #f4f4f4;
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  color: #111;
+  text-align: center;
 }
-
 .container {
-    max-width: 600px;
-    margin: auto;
-    padding: 15px;
+  width: min(100%, 620px);
+  margin: 0 auto;
+  padding: 14px 12px 22px;
 }
-
-h1 {
-    margin: 8px 0;
-    font-size: 25px;
+h1 { margin: 4px 0 8px; font-size: 28px; }
+.status { margin: 6px 0 10px; font-size: 18px; font-weight: 700; }
+.search-info {
+  min-height: 22px;
+  margin: 8px 0 2px;
+  font-size: 14px;
+  color: #555;
 }
-
-.status {
-    margin: 10px;
-    font-size: 17px;
-    font-weight: bold;
+.board-wrap {
+  width: 100%;
+  padding: 10px;
+  background: #dda95a;
+  border-radius: 7px;
 }
-
 canvas {
-    width: 100%;
-    max-width: 560px;
-    aspect-ratio: 1 / 1;
-    background: #d8a85c;
-    border-radius: 5px;
-    touch-action: none;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: #dda95a;
+  touch-action: none;
 }
-
-.buttons {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-top: 15px;
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 9px;
+  margin-top: 14px;
 }
-
-button {
-    border: 0;
-    border-radius: 7px;
-    padding: 11px 18px;
-    font-size: 16px;
-    cursor: pointer;
+button, select {
+  border: 0;
+  border-radius: 8px;
+  min-height: 44px;
+  font-size: 16px;
 }
-
-button:active {
-    transform: scale(0.97);
+button { padding: 0 18px; cursor: pointer; }
+button:active { transform: scale(.98); }
+button:disabled { opacity: .55; cursor: default; transform: none; }
+#undo { background: #ddd; }
+#vct { background: #1976d2; color: #fff; }
+#stop { background: #a33; color: #fff; display: none; }
+#restart { background: #333; color: #fff; }
+.depth-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 14px;
+  color: #555;
 }
-
-#undo {
-    background: #ddd;
+select { background: #fff; border: 1px solid #ccc; padding: 0 8px; }
+.footer { margin-top: 10px; color: #666; font-size: 14px; }
+.last-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e53935;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
-
-#restart {
-    background: #333;
-    color: white;
-}
-
-#vct {
-    background: #1976d2;
-    color: white;
-}
-
-.info {
-    margin-top: 12px;
-    color: #666;
-    font-size: 14px;
+@media (max-width: 430px) {
+  .container { padding-left: 8px; padding-right: 8px; }
+  h1 { font-size: 24px; }
+  .controls { gap: 7px; }
+  button { padding: 0 14px; font-size: 15px; }
 }
 </style>
 </head>
-
 <body>
-
 <div class="container">
+  <h1>五子棋 VCT</h1>
+  <div class="status" id="status">当前：黑棋 ●</div>
 
-<h1>五子棋 VCT</h1>
+  <div class="board-wrap">
+    <canvas id="board" aria-label="15乘15五子棋棋盘"></canvas>
+  </div>
 
-<div class="status" id="status">
-当前：黑棋 ●
-</div>
+  <div class="search-info" id="searchInfo">VCT 引擎准备就绪</div>
 
-<canvas id="board"></canvas>
-
-<div class="buttons">
+  <div class="controls">
     <button id="undo">悔棋</button>
     <button id="vct">VCT 搜索</button>
+    <button id="stop">停止</button>
     <button id="restart">重新开始</button>
-</div>
+  </div>
 
-<div class="info">
-15 × 15 Gomoku VCT Search
-</div>
+  <div class="depth-row">
+    <label for="depth">最大搜索深度</label>
+    <select id="depth">
+      <option value="12">12</option>
+      <option value="14">14</option>
+      <option value="16">16</option>
+      <option value="18">18</option>
+      <option value="20" selected>20</option>
+    </select>
+  </div>
 
+  <div class="footer">15 × 15 Gomoku · C++ VCT · WebAssembly</div>
 </div>
 
 <script>
-
 const SIZE = 15;
-
-const canvas = document.getElementById("board");
-const ctx = canvas.getContext("2d");
+const SCORE_FIVE = 1000;
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+const searchInfoEl = document.getElementById('searchInfo');
+const undoBtn = document.getElementById('undo');
+const vctBtn = document.getElementById('vct');
+const stopBtn = document.getElementById('stop');
+const restartBtn = document.getElementById('restart');
+const depthEl = document.getElementById('depth');
 
 let board = [];
 let history = [];
 let player = 1;
 let gameOver = false;
+let searching = false;
+let worker = null;
+
+function newWorker() {
+  if (worker) worker.terminate();
+  worker = new Worker('./vct-worker.js');
+
+  worker.onmessage = (event) => {
+    const data = event.data || {};
+    if (data.type === 'result') finishSearch(data);
+    if (data.type === 'error') {
+      setSearching(false);
+      searchInfoEl.textContent = '搜索错误：' + data.message;
+    }
+  };
+
+  worker.onerror = (event) => {
+    setSearching(false);
+    searchInfoEl.textContent = 'VCT 引擎加载失败，请刷新页面重试';
+    console.error(event);
+  };
+}
 
 function init() {
-    board = Array.from({length:SIZE}, () => Array(SIZE).fill(0));
-    history = [];
-    player = 1;
-    gameOver = false;
+  board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+  history = [];
+  player = 1;
+  gameOver = false;
+  setSearching(false);
+  newWorker();
+  resize();
+  updateStatus();
+  searchInfoEl.textContent = 'VCT 引擎准备就绪';
+}
 
-    resize();
-    updateStatus();
+function setSearching(value) {
+  searching = value;
+  vctBtn.disabled = value || gameOver;
+  undoBtn.disabled = value;
+  restartBtn.disabled = value;
+  depthEl.disabled = value;
+  stopBtn.style.display = value ? 'inline-block' : 'none';
+  vctBtn.textContent = value ? '搜索中…' : 'VCT 搜索';
 }
 
 function resize() {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.width * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
 
-    const rect = canvas.getBoundingClientRect();
-
-    const dpr = window.devicePixelRatio || 1;
-
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.width * dpr;
-
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-
-    draw();
+function geometry() {
+  const w = canvas.clientWidth;
+  const margin = w * 0.055;
+  const gap = (w - margin * 2) / (SIZE - 1);
+  return { w, margin, gap };
 }
 
 function draw() {
+  const { w, margin, gap } = geometry();
+  ctx.clearRect(0, 0, w, w);
+  ctx.fillStyle = '#dda95a';
+  ctx.fillRect(0, 0, w, w);
 
-    const w = canvas.clientWidth;
-    const margin = w * 0.055;
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < SIZE; i++) {
+    const p = margin + i * gap;
+    ctx.beginPath(); ctx.moveTo(margin, p); ctx.lineTo(w - margin, p); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p, margin); ctx.lineTo(p, w - margin); ctx.stroke();
+  }
 
-    const gap = (w - margin * 2) / (SIZE - 1);
-
-    ctx.clearRect(0,0,w,w);
-
-    ctx.fillStyle = "#d8a85c";
-    ctx.fillRect(0,0,w,w);
-
-    ctx.strokeStyle = "#333";
-    ctx.lineWidth = 1;
-
-    for(let i=0;i<SIZE;i++) {
-
-        const p = margin + i * gap;
-
-        ctx.beginPath();
-        ctx.moveTo(margin,p);
-        ctx.lineTo(w-margin,p);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(p,margin);
-        ctx.lineTo(p,w-margin);
-        ctx.stroke();
-    }
-
-    const stars = [
-        [3,3],
-        [11,3],
-        [7,7],
-        [3,11],
-        [11,11]
-    ];
-
-    ctx.fillStyle="#222";
-
-    stars.forEach(([x,y])=>{
-        ctx.beginPath();
-        ctx.arc(
-            margin+x*gap,
-            margin+y*gap,
-            3,
-            0,
-            Math.PI*2
-        );
-        ctx.fill();
-    });
-
-    for(let y=0;y<SIZE;y++){
-        for(let x=0;x<SIZE;x++){
-
-            if(board[y][x]!==0)
-                drawStone(x,y,board[y][x],margin,gap);
-        }
-    }
-}
-
-function drawStone(x,y,color,margin,gap){
-
-    const cx = margin + x*gap;
-    const cy = margin + y*gap;
-
-    const r = gap*0.43;
-
-    const gradient =
-        ctx.createRadialGradient(
-            cx-r/3,
-            cy-r/3,
-            2,
-            cx,
-            cy,
-            r
-        );
-
-    if(color===1){
-
-        gradient.addColorStop(0,"#666");
-        gradient.addColorStop(1,"#000");
-
-    }else{
-
-        gradient.addColorStop(0,"#fff");
-        gradient.addColorStop(1,"#ccc");
-    }
-
+  ctx.fillStyle = '#222';
+  [[3,3],[11,3],[7,7],[3,11],[11,11]].forEach(([x,y]) => {
     ctx.beginPath();
-    ctx.arc(cx,cy,r,0,Math.PI*2);
-
-    ctx.fillStyle=gradient;
+    ctx.arc(margin + x * gap, margin + y * gap, Math.max(2.5, gap * .07), 0, Math.PI * 2);
     ctx.fill();
+  });
 
-    ctx.strokeStyle="#555";
-    ctx.stroke();
-}
-
-function handleInput(e){
-
-    if(gameOver) return;
-
-    const rect = canvas.getBoundingClientRect();
-
-    const w = canvas.clientWidth;
-
-    const margin = w*0.055;
-
-    const gap =
-        (w-margin*2)/(SIZE-1);
-
-    let px =
-        e.clientX-rect.left;
-
-    let py =
-        e.clientY-rect.top;
-
-    let x =
-        Math.round((px-margin)/gap);
-
-    let y =
-        Math.round((py-margin)/gap);
-
-    if(
-        x<0 ||
-        x>=SIZE ||
-        y<0 ||
-        y>=SIZE
-    ) return;
-
-    if(board[y][x]!==0) return;
-
-    board[y][x]=player;
-
-    history.push({x,y,player});
-
-    if(checkWin(x,y,player)){
-
-        gameOver=true;
-
-        document.getElementById("status").innerText =
-            player===1
-            ? "黑棋获胜！"
-            : "白棋获胜！";
-
-        draw();
-
-        return;
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      if (board[y][x] !== 0) drawStone(x, y, board[y][x], margin, gap);
     }
+  }
 
-    player = player===1 ? 2 : 1;
-
-    updateStatus();
-
-    draw();
+  if (history.length) {
+    const last = history[history.length - 1];
+    const cx = margin + last.x * gap;
+    const cy = margin + last.y * gap;
+    ctx.fillStyle = '#e53935';
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(2.2, gap * .08), 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
-function checkWin(x,y,p){
+function drawStone(x, y, color, margin, gap) {
+  const cx = margin + x * gap;
+  const cy = margin + y * gap;
+  const r = gap * 0.43;
+  const gradient = ctx.createRadialGradient(cx - r / 3, cy - r / 3, 2, cx, cy, r);
 
-    const dirs=[
-        [1,0],
-        [0,1],
-        [1,1],
-        [1,-1]
-    ];
+  if (color === 1) {
+    gradient.addColorStop(0, '#666');
+    gradient.addColorStop(1, '#000');
+  } else {
+    gradient.addColorStop(0, '#fff');
+    gradient.addColorStop(1, '#ccc');
+  }
 
-    for(const [dx,dy] of dirs){
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  ctx.strokeStyle = '#555';
+  ctx.stroke();
+}
 
-        let count=1;
+function placeMove(x, y, source = 'manual') {
+  if (gameOver || board[y][x] !== 0) return false;
 
-        for(let s=1;s<5;s++){
+  const p = player;
+  board[y][x] = p;
+  history.push({ x, y, player: p });
 
-            let nx=x+dx*s;
-            let ny=y+dy*s;
+  if (checkWin(x, y, p)) {
+    gameOver = true;
+    statusEl.textContent = p === 1 ? '黑棋获胜！' : '白棋获胜！';
+    vctBtn.disabled = true;
+    draw();
+    return true;
+  }
 
-            if(
-                nx>=0 &&
-                nx<SIZE &&
-                ny>=0 &&
-                ny<SIZE &&
-                board[ny][nx]===p
-            )
-                count++;
-            else break;
-        }
+  player = p === 1 ? 2 : 1;
+  updateStatus();
+  draw();
+  return true;
+}
 
-        for(let s=1;s<5;s++){
+function handleInput(e) {
+  if (gameOver || searching) return;
+  const rect = canvas.getBoundingClientRect();
+  const { margin, gap } = geometry();
+  const x = Math.round((e.clientX - rect.left - margin) / gap);
+  const y = Math.round((e.clientY - rect.top - margin) / gap);
+  if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) return;
+  placeMove(x, y, 'manual');
+}
 
-            let nx=x-dx*s;
-            let ny=y-dy*s;
-
-            if(
-                nx>=0 &&
-                nx<SIZE &&
-                ny>=0 &&
-                ny<SIZE &&
-                board[ny][nx]===p
-            )
-                count++;
-            else break;
-        }
-
-        if(count>=5)
-            return true;
+function checkWin(x, y, p) {
+  const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+  for (const [dx, dy] of dirs) {
+    let count = 1;
+    for (let s = 1; s < 5; s++) {
+      const nx = x + dx * s, ny = y + dy * s;
+      if (nx >= 0 && nx < SIZE && ny >= 0 && ny < SIZE && board[ny][nx] === p) count++;
+      else break;
     }
-
-    return false;
+    for (let s = 1; s < 5; s++) {
+      const nx = x - dx * s, ny = y - dy * s;
+      if (nx >= 0 && nx < SIZE && ny >= 0 && ny < SIZE && board[ny][nx] === p) count++;
+      else break;
+    }
+    if (count >= 5) return true;
+  }
+  return false;
 }
 
-function updateStatus(){
-
-    document.getElementById("status").innerText =
-        player===1
-        ? "当前：黑棋 ●"
-        : "当前：白棋 ○";
+function updateStatus() {
+  statusEl.textContent = player === 1 ? '当前：黑棋 ●' : '当前：白棋 ○';
 }
 
-canvas.addEventListener(
-    "pointerdown",
-    handleInput
-);
+function startSearch() {
+  if (gameOver || searching) return;
+  if (!worker) newWorker();
 
-document.getElementById("restart")
-.onclick = init;
+  setSearching(true);
+  searchInfoEl.textContent = 'VCT 搜索中，请稍候…';
 
-document.getElementById("undo")
-.onclick = () => {
+  worker.postMessage({
+    type: 'search',
+    depth: Number(depthEl.value),
+    history: history.map(({ x, y }) => ({ x, y }))
+  });
+}
 
-    if(history.length===0)
-        return;
+function finishSearch(data) {
+  setSearching(false);
 
-    const m =
-        history.pop();
+  const seconds = (data.elapsedMs / 1000).toFixed(2);
+  const nodes = Math.round(data.nodes || 0).toLocaleString();
+  const hits = Math.round(data.ttHits || 0).toLocaleString();
 
-    board[m.y][m.x]=0;
+  if (data.score >= SCORE_FIVE && data.x >= 0 && data.y >= 0) {
+    searchInfoEl.textContent = `发现必胜着法：(${data.x}, ${data.y}) · ${seconds}s · ${nodes} 节点 · TT ${hits}`;
+    placeMove(data.x, data.y, 'ai');
+  } else {
+    searchInfoEl.textContent = `当前深度未发现必胜路径 · 得分 ${data.score} · ${seconds}s · ${nodes} 节点`;
+  }
+}
 
-    player=m.player;
+function stopSearch() {
+  if (!searching) return;
+  newWorker();
+  setSearching(false);
+  searchInfoEl.textContent = '搜索已停止';
+}
 
-    gameOver=false;
+canvas.addEventListener('pointerdown', handleInput);
 
-    updateStatus();
-
-    draw();
+undoBtn.onclick = () => {
+  if (!history.length || searching) return;
+  const move = history.pop();
+  board[move.y][move.x] = 0;
+  player = move.player;
+  gameOver = false;
+  vctBtn.disabled = false;
+  updateStatus();
+  searchInfoEl.textContent = '已悔棋';
+  draw();
 };
 
-document.getElementById("vct")
-.onclick = () => {
-
-    alert(
-        "下一步将在这里接入你的 C++ VCT 搜索算法"
-    );
-};
-
-window.addEventListener(
-    "resize",
-    resize
-);
+vctBtn.onclick = startSearch;
+stopBtn.onclick = stopSearch;
+restartBtn.onclick = init;
+window.addEventListener('resize', resize);
 
 init();
-
 </script>
-
 </body>
 </html>
