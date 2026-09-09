@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Gomoku AI · Mobile WASM 1.18</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.wasm.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: #f3f3f3;
+      font-family: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;
+      color: #222;
+    }
+
+    body { display: flex; justify-content: center; }
+
+    .app {
+      width: 100%;
+      max-width: 640px;
+      padding: 12px 10px 22px;
+    }
+
+    h1 {
+      margin: 4px 0;
+      text-align: center;
+      font-size: 24px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #777;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .panel {
+      background: #fff;
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.06);
+    }
+
+    .status {
+      min-height: 24px;
+      text-align: center;
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 24px;
+    }
+
+    .loading { color: #1565c0; }
+    .error   { color: #c62828; }
+    .ai      { color: #7b1fa2; }
+    .win     { color: #d84315; }
+
+    .model-info {
+      margin-top: 6px;
+      text-align: center;
+      color: #666;
+      font-size: 12px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .board-wrap {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+
+    canvas {
+      width: 100%;
+      max-width: 600px;
+      aspect-ratio: 1 / 1;
+      display: block;
+      background: #d2a05b;
+      border-radius: 8px;
+      box-shadow: 0 3px 14px rgba(0,0,0,.15);
+      touch-action: none;
+      user-select: none;
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    button {
+      border: none;
+      border-radius: 9px;
+      padding: 12px 8px;
+      min-height: 44px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .48;
+      cursor: not-allowed;
+    }
+
+    #undoBtn    { background: #e3e3e3; color: #222; }
+    #reloadBtn  { background: #1976d2; color: #fff; }
+    #restartBtn { background: #333; color: #fff; }
+
+    .legend {
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+      margin-top: 10px;
+      font-size: 13px;
+      color: #555;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      vertical-align: -2px;
+      margin-right: 4px;
+      border: 1px solid #555;
+    }
+
+    .dot.black { background: #111; }
+    .dot.white { background: #fff; }
+
+    .tips {
+      margin-top: 10px;
+      font-size: 12px;
+      line-height: 1.55;
+      color: #777;
+      text-align: center;
+    }
+
+    @media (max-width: 420px) {
+      .app { padding-left: 8px; padding-right: 8px; }
+      h1 { font-size: 22px; }
+      .status { font-size: 16px; }
+      button { font-size: 14px; }
+    }
+  </style>
+</head>
+
+<body>
+<div class="app">
+
+  <h1>五子棋 AI</h1>
+  <div class="subtitle">SINGLE ONNX · WASM SIMD 1.18 · Mobile Test · 15 × 15</div>
+
+  <div class="panel">
+    <div id="status" class="status loading">正在加载 AI...</div>
+    <div id="modelInfo" class="model-info">
+      准备加载 gomoku_single.onnx · WASM SIMD 1.18
+    </div>
+  </div>
+
+  <div class="board-wrap">
+    <canvas id="board"></canvas>
+  </div>
+
+  <div class="buttons">
+    <button id="undoBtn">悔棋</button>
+    <button id="reloadBtn">重新加载 AI</button>
+    <button id="restartBtn">重新开始</button>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot black"></span>你（黑棋）</span>
+    <span><span class="dot white"></span>AI（白棋）</span>
+  </div>
+
+  <div class="tips">
+    手机低内存 A/B 版：仍然直接取 Policy 最大概率合法位置。<br>
+与“聪明版”算法相同，只把 ORT 改成 1.18 单线程 SIMD WASM。
+  </div>
+
+</div>
+
+
+<script>
+"use strict";
+
+/* =========================================================
+   基本设置
+   ========================================================= */
+
+const SIZE = 15;
+const EMPTY = 0;
+const HUMAN = 1;
+const AI = 2;
+
+const MODEL_URL = "./gomoku_single.onnx";
+
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+
+const statusEl = document.getElementById("status");
+const modelInfoEl = document.getElementById("modelInfo");
+
+const undoBtn = document.getElementById("undoBtn");
+const reloadBtn = document.getElementById("reloadBtn");
+const restartBtn = document.getElementById("restartBtn");
+
+let board = [];
+let history = [];
+
+let currentPlayer = HUMAN;
+let gameOver = false;
+let aiThinking = false;
+let lastMove = null;
+
+let aiSession = null;
+let aiReady = false;
+let lastAIValue = null;
+
+
+/* =========================================================
+   UI
+   ========================================================= */
+
+function setStatus(text, cls = "") {
+  statusEl.textContent = text;
+  statusEl.className = "status";
+  if (cls) statusEl.classList.add(cls);
+}
+
+function updateStatus() {
+  if (gameOver) return;
+
+  if (!aiReady) {
+    setStatus("正在等待 AI 模型...", "loading");
+    return;
+  }
+
+  if (aiThinking) {
+    setStatus("AI 思考中...", "ai");
+    return;
+  }
+
+  if (currentPlayer === HUMAN) {
+    let text = "轮到你：黑棋 ●";
+
+    if (lastAIValue !== null) {
+      text += " | AI Value = " + lastAIValue.toFixed(3);
+    }
+
+    setStatus(text);
+  } else {
+    setStatus("轮到 AI：白棋 ○", "ai");
+  }
+}
+
+function updateButtons() {
+  undoBtn.disabled = aiThinking || history.length === 0;
+  reloadBtn.disabled = aiThinking;
+  restartBtn.disabled = aiThinking;
+}
+
+
+/* =========================================================
+   初始化
+   ========================================================= */
+
+function initGame() {
+  board = Array.from(
+    { length: SIZE },
+    () => Array(SIZE).fill(EMPTY)
+  );
+
+  history = [];
+  currentPlayer = HUMAN;
+  gameOver = false;
+  aiThinking = false;
+  lastMove = null;
+  lastAIValue = null;
+
+  resizeCanvas();
+  updateStatus();
+  updateButtons();
+}
+
+async function initApp() {
+  initGame();
+
+  /*
+    移动端关键设置：
+
+    ORT Web 1.18.0 在 numThreads=1 时可以使用
+    非多线程的 ort-wasm-simd.wasm。
+
+    1.19+ 默认体系转向 simd-threaded，
+    手机端内存压力会明显更大。
+  */
+  ort.env.wasm.wasmPaths =
+    "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
+
+  ort.env.wasm.numThreads = 1;
+  ort.env.wasm.proxy = false;
+
+  await loadAIModel();
+}
+
+
+/* =========================================================
+   SINGLE ONNX + 低内存 WASM 1.18
+   ========================================================= */
+
+async function loadAIModel() {
+  aiReady = false;
+  aiSession = null;
+
+  updateButtons();
+
+  try {
+    setStatus(
+      "正在加载 gomoku_single.onnx...",
+      "loading"
+    );
+
+    modelInfoEl.textContent =
+      "WASM 1.18 · 单线程 SIMD · 正在创建会话";
+
+    /*
+      固定版本号，仅用于避免 GitHub 上旧模型缓存。
+      不使用 Date.now()，这样第二次打开仍然可以使用浏览器缓存。
+    */
+    const modelUrl =
+      MODEL_URL + "?v=wasm118-mobile-1";
+
+    const t0 = performance.now();
+
+    aiSession =
+      await ort.InferenceSession.create(
+        modelUrl,
+        {
+          executionProviders: ["wasm"],
+
+          /*
+            降低移动端 Session 额外内存保留。
+            不改变网络权重和输入输出定义。
+          */
+          enableCpuMemArena: false,
+          enableMemPattern: false
+        }
+      );
+
+    const loadMs =
+      performance.now() - t0;
+
+    aiReady = true;
+
+    console.log(
+      "ORT 1.18 single-thread WASM session created."
+    );
+
+    console.log(
+      "Inputs:",
+      aiSession.inputNames
+    );
+
+    console.log(
+      "Outputs:",
+      aiSession.outputNames
+    );
+
+    modelInfoEl.textContent =
+      "AI 加载成功 · WASM 1.18 · 单线程 SIMD" +
+      " · " +
+      (loadMs / 1000).toFixed(2) +
+      "s" +
+      " · 输入: " +
+      aiSession.inputNames.join(", ") +
+      " · 输出: " +
+      aiSession.outputNames.join(", ");
+
+    updateStatus();
+    updateButtons();
+
+  } catch (err) {
+    console.error(
+      "AI load error:",
+      err
+    );
+
+    aiReady = false;
+    aiSession = null;
+
+    setStatus(
+      "AI 模型加载失败",
+      "error"
+    );
+
+    modelInfoEl.textContent =
+      "加载错误：" +
+      (
+        err && err.message
+          ? err.message
+          : String(err)
+      );
+
+    updateButtons();
+  }
+}
+
+
+/* =========================================================
+   Canvas 绘制
+   ========================================================= */
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  const cssSize = rect.width;
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.width = Math.round(cssSize * dpr);
+  canvas.height = Math.round(cssSize * dpr);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  drawBoard();
+}
+
+function getBoardGeometry() {
+  const w = canvas.clientWidth;
+  const margin = w * 0.055;
+  const gap = (w - 2 * margin) / (SIZE - 1);
+
+  return { w, margin, gap };
+}
+
+function drawBoard() {
+  const { w, margin, gap } = getBoardGeometry();
+
+  ctx.clearRect(0, 0, w, w);
+
+  ctx.fillStyle = "#d2a05b";
+  ctx.fillRect(0, 0, w, w);
+
+  ctx.strokeStyle = "#303030";
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i < SIZE; i++) {
+    const p = margin + i * gap;
+
+    ctx.beginPath();
+    ctx.moveTo(margin, p);
+    ctx.lineTo(w - margin, p);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(p, margin);
+    ctx.lineTo(p, w - margin);
+    ctx.stroke();
+  }
+
+  const stars = [
+    [3,3],
+    [11,3],
+    [7,7],
+    [3,11],
+    [11,11]
+  ];
+
+  ctx.fillStyle = "#222";
+
+  for (const [x, y] of stars) {
+    ctx.beginPath();
+
+    ctx.arc(
+      margin + x * gap,
+      margin + y * gap,
+      Math.max(2.6, gap * 0.08),
+      0,
+      Math.PI * 2
+    );
+
+    ctx.fill();
+  }
+
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      if (board[y][x] !== EMPTY) {
+        drawStone(
+          x,
+          y,
+          board[y][x],
+          margin,
+          gap
+        );
+      }
+    }
+  }
+
+  if (lastMove) {
+    const cx =
+      margin + lastMove.x * gap;
+
+    const cy =
+      margin + lastMove.y * gap;
+
+    ctx.fillStyle = "#e53935";
+
+    ctx.beginPath();
+
+    ctx.arc(
+      cx,
+      cy,
+      Math.max(2.4, gap * 0.08),
+      0,
+      Math.PI * 2
+    );
+
+    ctx.fill();
+  }
+}
+
+function drawStone(x, y, color, margin, gap) {
+  const cx = margin + x * gap;
+  const cy = margin + y * gap;
+  const r = gap * 0.43;
+
+  const gradient =
+    ctx.createRadialGradient(
+      cx - r * 0.35,
+      cy - r * 0.35,
+      r * 0.08,
+      cx,
+      cy,
+      r
+    );
+
+  if (color === HUMAN) {
+    gradient.addColorStop(0, "#777");
+    gradient.addColorStop(0.35, "#333");
+    gradient.addColorStop(1, "#050505");
+  } else {
+    gradient.addColorStop(0, "#fff");
+    gradient.addColorStop(0.55, "#f5f5f5");
+    gradient.addColorStop(1, "#c9c9c9");
+  }
+
+  ctx.beginPath();
+
+  ctx.arc(
+    cx,
+    cy,
+    r,
+    0,
+    Math.PI * 2
+  );
+
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  ctx.strokeStyle =
+    color === HUMAN
+      ? "#000"
+      : "#777";
+
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+
+/* =========================================================
+   落子
+   ========================================================= */
+
+function placeMove(x, y, color, source) {
+  if (
+    x < 0 || x >= SIZE ||
+    y < 0 || y >= SIZE
+  ) {
+    return false;
+  }
+
+  if (board[y][x] !== EMPTY) {
+    return false;
+  }
+
+  board[y][x] = color;
+
+  history.push({
+    x,
+    y,
+    color,
+    source
+  });
+
+  lastMove = { x, y };
+
+  drawBoard();
+  updateButtons();
+
+  return true;
+}
+
+function handleBoardPointer(e) {
+  if (!aiReady) {
+    setStatus(
+      "AI 模型尚未加载完成",
+      "loading"
+    );
+    return;
+  }
+
+  if (
+    gameOver ||
+    aiThinking ||
+    currentPlayer !== HUMAN
+  ) {
+    return;
+  }
+
+  const rect =
+    canvas.getBoundingClientRect();
+
+  const { margin, gap } =
+    getBoardGeometry();
+
+  const px =
+    e.clientX - rect.left;
+
+  const py =
+    e.clientY - rect.top;
+
+  const x =
+    Math.round((px - margin) / gap);
+
+  const y =
+    Math.round((py - margin) / gap);
+
+  if (
+    x < 0 || x >= SIZE ||
+    y < 0 || y >= SIZE
+  ) {
+    return;
+  }
+
+  if (board[y][x] !== EMPTY) {
+    return;
+  }
+
+  placeMove(
+    x,
+    y,
+    HUMAN,
+    "human"
+  );
+
+  if (checkWin(x, y, HUMAN)) {
+    gameOver = true;
+    setStatus("你获胜了！", "win");
+    updateButtons();
+    return;
+  }
+
+  if (isBoardFull()) {
+    gameOver = true;
+    setStatus("平局。", "win");
+    updateButtons();
+    return;
+  }
+
+  currentPlayer = AI;
+  updateStatus();
+
+  setTimeout(
+    normalAIMove,
+    80
+  );
+}
+
+
+/* =========================================================
+   模型输入
+   ========================================================= */
+
+function boardToTensor(aiColor) {
+  const total = SIZE * SIZE;
+
+  const data =
+    new Float32Array(
+      3 * total
+    );
+
+  const opponent =
+    aiColor === HUMAN
+      ? AI
+      : HUMAN;
+
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      const idx = y * SIZE + x;
+      const p = board[y][x];
+
+      if (p === aiColor) {
+        data[idx] = 1.0;
+
+      } else if (p === opponent) {
+        data[total + idx] = 1.0;
+
+      } else {
+        data[2 * total + idx] = 1.0;
+      }
+    }
+  }
+
+  return new ort.Tensor(
+    "float32",
+    data,
+    [1, 3, SIZE, SIZE]
+  );
+}
+
+
+/* =========================================================
+   AI
+   当前先直接取 policy 最高合法点
+   ========================================================= */
+
+async function normalAIMove() {
+  if (
+    !aiReady ||
+    !aiSession ||
+    gameOver ||
+    currentPlayer !== AI
+  ) {
+    return;
+  }
+
+  aiThinking = true;
+  updateStatus();
+  updateButtons();
+
+  await new Promise(
+    resolve =>
+      setTimeout(resolve, 40)
+  );
+
+  try {
+    const inputTensor =
+      boardToTensor(AI);
+
+    const inputName =
+      aiSession.inputNames.includes("board")
+        ? "board"
+        : aiSession.inputNames[0];
+
+    const feeds = {};
+    feeds[inputName] = inputTensor;
+
+    const results =
+      await aiSession.run(feeds);
+
+    const valueTensor =
+      results.value ||
+      results[aiSession.outputNames[0]];
+
+    const policyTensor =
+      results.policy ||
+      results[aiSession.outputNames[1]];
+
+    if (!valueTensor || !policyTensor) {
+      throw new Error(
+        "找不到 value / policy 输出"
+      );
+    }
+
+    const value =
+      Number(valueTensor.data[0]);
+
+    const policy =
+      policyTensor.data;
+
+    lastAIValue = value;
+
+    let bestIndex = -1;
+    let bestProb = -Infinity;
+
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        if (board[y][x] !== EMPTY) {
+          continue;
+        }
+
+        const idx = y * SIZE + x;
+        const p = Number(policy[idx]);
+
+        if (p > bestProb) {
+          bestProb = p;
+          bestIndex = idx;
+        }
+      }
+    }
+
+    if (bestIndex < 0) {
+      throw new Error(
+        "没有找到合法 AI 落子"
+      );
+    }
+
+    /*
+       PyTorch flatten / JS 对应关系：
+       index = row * 15 + col
+       即：
+       y = row
+       x = col
+    */
+    const x =
+      bestIndex % SIZE;
+
+    const y =
+      Math.floor(bestIndex / SIZE);
+
+    console.log(
+      "AI move:",
+      {
+        x,
+        y,
+        value,
+        probability: bestProb
+      }
+    );
+
+    placeMove(
+      x,
+      y,
+      AI,
+      "onnx-policy"
+    );
+
+    if (checkWin(x, y, AI)) {
+      gameOver = true;
+      aiThinking = false;
+
+      setStatus(
+        "AI 获胜！ Value = " +
+        value.toFixed(3),
+        "win"
+      );
+
+      updateButtons();
+      return;
+    }
+
+    if (isBoardFull()) {
+      gameOver = true;
+      aiThinking = false;
+
+      setStatus(
+        "平局。",
+        "win"
+      );
+
+      updateButtons();
+      return;
+    }
+
+    currentPlayer = HUMAN;
+    aiThinking = false;
+
+    modelInfoEl.textContent =
+      "AI 已运行 · Value = " +
+      value.toFixed(4) +
+      " · Policy = " +
+      bestProb.toFixed(6) +
+      " · AI 落子 = (" +
+      x + ", " + y + ")";
+
+    updateStatus();
+    updateButtons();
+
+  } catch (err) {
+    console.error(
+      "AI inference error:",
+      err
+    );
+
+    aiThinking = false;
+    currentPlayer = HUMAN;
+
+    setStatus(
+      "AI 推理失败",
+      "error"
+    );
+
+    modelInfoEl.textContent =
+      "推理错误：" +
+      (
+        err && err.message
+          ? err.message
+          : String(err)
+      );
+
+    updateButtons();
+  }
+}
+
+
+/* =========================================================
+   胜负
+   ========================================================= */
+
+function checkWin(x, y, player) {
+  const dirs = [
+    [1,0],
+    [0,1],
+    [1,1],
+    [1,-1]
+  ];
+
+  for (const [dx, dy] of dirs) {
+    let count = 1;
+
+    for (let step = 1; step < 5; step++) {
+      const nx = x + dx * step;
+      const ny = y + dy * step;
+
+      if (
+        nx >= 0 && nx < SIZE &&
+        ny >= 0 && ny < SIZE &&
+        board[ny][nx] === player
+      ) {
+        count++;
+      } else {
+        break;
+      }
+    }
+
+    for (let step = 1; step < 5; step++) {
+      const nx = x - dx * step;
+      const ny = y - dy * step;
+
+      if (
+        nx >= 0 && nx < SIZE &&
+        ny >= 0 && ny < SIZE &&
+        board[ny][nx] === player
+      ) {
+        count++;
+      } else {
+        break;
+      }
+    }
+
+    if (count >= 5) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isBoardFull() {
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      if (board[y][x] === EMPTY) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+
+/* =========================================================
+   悔棋
+   ========================================================= */
+
+function undoHumanAIPair() {
+  if (
+    aiThinking ||
+    history.length === 0
+  ) {
+    return;
+  }
+
+  gameOver = false;
+
+  if (
+    history.length > 0 &&
+    history[history.length - 1].color === AI
+  ) {
+    const m = history.pop();
+    board[m.y][m.x] = EMPTY;
+  }
+
+  if (
+    history.length > 0 &&
+    history[history.length - 1].color === HUMAN
+  ) {
+    const m = history.pop();
+    board[m.y][m.x] = EMPTY;
+  }
+
+  if (history.length > 0) {
+    const m =
+      history[history.length - 1];
+
+    lastMove = {
+      x: m.x,
+      y: m.y
+    };
+  } else {
+    lastMove = null;
+  }
+
+  currentPlayer = HUMAN;
+  lastAIValue = null;
+
+  modelInfoEl.textContent =
+    aiReady
+      ? "WASM 1.18 AI 已加载 · 已悔棋"
+      : "准备加载模型";
+
+  drawBoard();
+  updateStatus();
+  updateButtons();
+}
+
+
+/* =========================================================
+   事件
+   ========================================================= */
+
+canvas.addEventListener(
+  "pointerdown",
+  handleBoardPointer
+);
+
+window.addEventListener(
+  "resize",
+  resizeCanvas
+);
+
+undoBtn.addEventListener(
+  "click",
+  undoHumanAIPair
+);
+
+reloadBtn.addEventListener(
+  "click",
+  loadAIModel
+);
+
+restartBtn.addEventListener(
+  "click",
+  () => {
+    initGame();
+
+    if (aiReady) {
+      modelInfoEl.textContent =
+        "WASM 1.18 AI 已加载 · 新棋局";
+    }
+  }
+);
+
+
+/* =========================================================
+   启动
+   ========================================================= */
+
+initApp();
+
+</script>
+
+</body>
+</html>
