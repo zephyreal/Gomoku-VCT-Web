@@ -6,14 +6,10 @@
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Gomoku AI</title>
 
-  <!-- 固定 ONNX Runtime Web 版本 -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 
   <style>
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
     html, body {
       margin: 0;
@@ -23,10 +19,7 @@
       color: #222;
     }
 
-    body {
-      display: flex;
-      justify-content: center;
-    }
+    body { display: flex; justify-content: center; }
 
     .app {
       width: 100%;
@@ -63,17 +56,17 @@
       line-height: 24px;
     }
 
-    .status.loading { color: #1565c0; }
-    .status.error   { color: #c62828; }
-    .status.ai      { color: #7b1fa2; }
-    .status.win     { color: #d84315; }
+    .loading { color: #1565c0; }
+    .error   { color: #c62828; }
+    .ai      { color: #7b1fa2; }
+    .win     { color: #d84315; }
 
     .model-info {
       margin-top: 6px;
       text-align: center;
       color: #666;
       font-size: 12px;
-      line-height: 1.45;
+      line-height: 1.5;
       word-break: break-word;
     }
 
@@ -152,40 +145,24 @@
     }
 
     @media (max-width: 420px) {
-      .app {
-        padding-left: 8px;
-        padding-right: 8px;
-      }
-
-      h1 {
-        font-size: 22px;
-      }
-
-      .status {
-        font-size: 16px;
-      }
-
-      button {
-        font-size: 14px;
-      }
+      .app { padding-left: 8px; padding-right: 8px; }
+      h1 { font-size: 22px; }
+      .status { font-size: 16px; }
+      button { font-size: 14px; }
     }
   </style>
 </head>
 
 <body>
-
 <div class="app">
 
   <h1>五子棋 AI</h1>
   <div class="subtitle">ONNX Policy-Value Network · 15 × 15</div>
 
   <div class="panel">
-    <div id="status" class="status loading">
-      正在加载 AI 模型...
-    </div>
-
+    <div id="status" class="status loading">正在加载 AI...</div>
     <div id="modelInfo" class="model-info">
-      模型：gomoku.onnx + gomoku.onnx.data
+      准备加载 gomoku.onnx + gomoku.onnx.data
     </div>
   </div>
 
@@ -205,8 +182,8 @@
   </div>
 
   <div class="tips">
-    当前版本先直接使用 Policy 最大概率合法位置落子。<br>
-    后续再接入 MCTS 和 C++ VCT。
+    当前版本：神经网络 Policy 最大概率合法位置落子。<br>
+    模型链路稳定后，再接入 MCTS 和 C++ VCT。
   </div>
 
 </div>
@@ -215,15 +192,17 @@
 <script>
 "use strict";
 
-const SIZE = 15;
+/* =========================================================
+   基本设置
+   ========================================================= */
 
+const SIZE = 15;
 const EMPTY = 0;
 const HUMAN = 1;
 const AI = 2;
 
-// 这里只加载 .onnx
-// gomoku.onnx 内部会自动引用同目录的 gomoku.onnx.data
 const MODEL_URL = "./gomoku.onnx";
+const DATA_URL  = "./gomoku.onnx.data";
 
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
@@ -245,30 +224,21 @@ let lastMove = null;
 
 let aiSession = null;
 let aiReady = false;
-
 let lastAIValue = null;
-let lastAIProb = null;
 
 
-/* =============================
-   状态显示
-   ============================= */
+/* =========================================================
+   UI
+   ========================================================= */
 
 function setStatus(text, cls = "") {
   statusEl.textContent = text;
   statusEl.className = "status";
-
-  if (cls) {
-    statusEl.classList.add(cls);
-  }
+  if (cls) statusEl.classList.add(cls);
 }
 
-
 function updateStatus() {
-
-  if (gameOver) {
-    return;
-  }
+  if (gameOver) return;
 
   if (!aiReady) {
     setStatus("正在等待 AI 模型...", "loading");
@@ -281,7 +251,6 @@ function updateStatus() {
   }
 
   if (currentPlayer === HUMAN) {
-
     let text = "轮到你：黑棋 ●";
 
     if (lastAIValue !== null) {
@@ -289,128 +258,162 @@ function updateStatus() {
     }
 
     setStatus(text);
-
   } else {
-
     setStatus("轮到 AI：白棋 ○", "ai");
-
   }
 }
 
-
 function updateButtons() {
-
-  undoBtn.disabled =
-    aiThinking || history.length === 0;
-
-  reloadBtn.disabled =
-    aiThinking;
-
-  restartBtn.disabled =
-    aiThinking;
+  undoBtn.disabled = aiThinking || history.length === 0;
+  reloadBtn.disabled = aiThinking;
+  restartBtn.disabled = aiThinking;
 }
 
 
-/* =============================
+/* =========================================================
    初始化
-   ============================= */
+   ========================================================= */
 
 function initGame() {
-
   board = Array.from(
     { length: SIZE },
     () => Array(SIZE).fill(EMPTY)
   );
 
   history = [];
-
   currentPlayer = HUMAN;
-
   gameOver = false;
   aiThinking = false;
-
   lastMove = null;
-
   lastAIValue = null;
-  lastAIProb = null;
 
   resizeCanvas();
   updateStatus();
   updateButtons();
 }
 
-
 async function initApp() {
-
   initGame();
 
-  // 关键：固定 WASM 路径和版本
   ort.env.wasm.wasmPaths =
     "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
 
-  // 手机端先使用单线程，更稳
   ort.env.wasm.numThreads = 1;
-
-  // 避免 worker/proxy 带来的额外跨域问题
   ort.env.wasm.proxy = false;
 
   await loadAIModel();
 }
 
 
-/* =============================
-   加载 ONNX
-   ============================= */
+/* =========================================================
+   文件下载
+   ========================================================= */
+
+async function fetchBinary(url, label) {
+  const response = await fetch(url + "?v=" + Date.now(), {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      label + " 下载失败：HTTP " +
+      response.status + " " +
+      response.statusText
+    );
+  }
+
+  const buffer = await response.arrayBuffer();
+
+  if (buffer.byteLength === 0) {
+    throw new Error(label + " 文件大小为 0");
+  }
+
+  return new Uint8Array(buffer);
+}
+
+
+/* =========================================================
+   加载 ONNX + external data
+   ========================================================= */
 
 async function loadAIModel() {
-
   aiReady = false;
   aiSession = null;
-
-  setStatus(
-    "正在加载 gomoku.onnx 和权重数据...",
-    "loading"
-  );
-
-  modelInfoEl.textContent =
-    "模型：gomoku.onnx + gomoku.onnx.data";
 
   updateButtons();
 
   try {
+    setStatus("正在下载 gomoku.onnx...", "loading");
+    modelInfoEl.textContent = "第 1/2 步：下载模型结构";
+
+    const modelBytes =
+      await fetchBinary(
+        MODEL_URL,
+        "gomoku.onnx"
+      );
+
+    setStatus("正在下载 gomoku.onnx.data...", "loading");
+    modelInfoEl.textContent =
+      "第 2/2 步：下载模型权重 · ONNX " +
+      (modelBytes.byteLength / 1024).toFixed(1) +
+      " KB";
+
+    const dataBytes =
+      await fetchBinary(
+        DATA_URL,
+        "gomoku.onnx.data"
+      );
+
+    setStatus("正在创建 AI 推理会话...", "loading");
+
+    modelInfoEl.textContent =
+      "ONNX " +
+      (modelBytes.byteLength / 1024).toFixed(1) +
+      " KB · DATA " +
+      (dataBytes.byteLength / 1024).toFixed(1) +
+      " KB";
 
     /*
-       这里只传 gomoku.onnx。
-       ONNX Runtime 会根据模型中的 external_data
-       自动请求同目录下的 gomoku.onnx.data。
-    */
+      关键：
+      不再让浏览器自动寻找外部文件。
+      明确把 gomoku.onnx.data 下载到内存，
+      并挂载为 ONNX externalData。
 
-    aiSession =
-      await ort.InferenceSession.create(
-        MODEL_URL,
-        {
-          executionProviders: ["wasm"]
-        }
-      );
+      同一份数据同时注册两个常见路径写法，
+      兼容模型内部记录：
+        gomoku.onnx.data
+        ./gomoku.onnx.data
+    */
+    aiSession = await ort.InferenceSession.create(
+      modelBytes,
+      {
+        executionProviders: ["wasm"],
+
+        externalData: [
+          {
+            path: "gomoku.onnx.data",
+            data: dataBytes
+          },
+          {
+            path: "./gomoku.onnx.data",
+            data: dataBytes
+          }
+        ]
+      }
+    );
 
     aiReady = true;
 
-    console.log(
-      "ONNX model loaded"
-    );
-
-    console.log(
-      "Inputs:",
-      aiSession.inputNames
-    );
-
-    console.log(
-      "Outputs:",
-      aiSession.outputNames
-    );
+    console.log("ONNX session created successfully.");
+    console.log("Inputs:", aiSession.inputNames);
+    console.log("Outputs:", aiSession.outputNames);
 
     modelInfoEl.textContent =
-      "AI 模型加载成功 · 输入: " +
+      "AI 加载成功 · ONNX " +
+      (modelBytes.byteLength / 1024).toFixed(1) +
+      " KB · DATA " +
+      (dataBytes.byteLength / 1024).toFixed(1) +
+      " KB · 输入: " +
       aiSession.inputNames.join(", ") +
       " · 输出: " +
       aiSession.outputNames.join(", ");
@@ -419,123 +422,62 @@ async function loadAIModel() {
     updateButtons();
 
   } catch (err) {
-
-    console.error(
-      "AI model load failed:",
-      err
-    );
+    console.error("AI load error:", err);
 
     aiReady = false;
     aiSession = null;
 
-    setStatus(
-      "AI 模型加载失败",
-      "error"
-    );
+    setStatus("AI 模型加载失败", "error");
 
     modelInfoEl.textContent =
       "加载错误：" +
-      (
-        err && err.message
-          ? err.message
-          : String(err)
-      );
+      (err && err.message
+        ? err.message
+        : String(err));
 
     updateButtons();
   }
 }
 
 
-/* =============================
-   Canvas
-   ============================= */
+/* =========================================================
+   Canvas 绘制
+   ========================================================= */
 
 function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  const cssSize = rect.width;
+  const dpr = window.devicePixelRatio || 1;
 
-  const rect =
-    canvas.getBoundingClientRect();
+  canvas.width = Math.round(cssSize * dpr);
+  canvas.height = Math.round(cssSize * dpr);
 
-  const cssSize =
-    rect.width;
-
-  const dpr =
-    window.devicePixelRatio || 1;
-
-  canvas.width =
-    Math.round(cssSize * dpr);
-
-  canvas.height =
-    Math.round(cssSize * dpr);
-
-  ctx.setTransform(
-    dpr, 0,
-    0, dpr,
-    0, 0
-  );
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   drawBoard();
 }
 
-
 function getBoardGeometry() {
+  const w = canvas.clientWidth;
+  const margin = w * 0.055;
+  const gap = (w - 2 * margin) / (SIZE - 1);
 
-  const w =
-    canvas.clientWidth;
-
-  const margin =
-    w * 0.055;
-
-  const gap =
-    (w - margin * 2) /
-    (SIZE - 1);
-
-  return {
-    w,
-    margin,
-    gap
-  };
+  return { w, margin, gap };
 }
 
-
 function drawBoard() {
+  const { w, margin, gap } = getBoardGeometry();
 
-  const {
-    w,
-    margin,
-    gap
-  } = getBoardGeometry();
+  ctx.clearRect(0, 0, w, w);
 
-  ctx.clearRect(
-    0,
-    0,
-    w,
-    w
-  );
+  ctx.fillStyle = "#d2a05b";
+  ctx.fillRect(0, 0, w, w);
 
-  ctx.fillStyle =
-    "#d2a05b";
+  ctx.strokeStyle = "#303030";
+  ctx.lineWidth = 1;
 
-  ctx.fillRect(
-    0,
-    0,
-    w,
-    w
-  );
-
-  ctx.strokeStyle =
-    "#303030";
-
-  ctx.lineWidth =
-    1;
-
-  for (
-    let i = 0;
-    i < SIZE;
-    i++
-  ) {
-
-    const p =
-      margin + i * gap;
+  for (let i = 0; i < SIZE; i++) {
+    const p = margin + i * gap;
 
     ctx.beginPath();
     ctx.moveTo(margin, p);
@@ -548,7 +490,6 @@ function drawBoard() {
     ctx.stroke();
   }
 
-
   const stars = [
     [3,3],
     [11,3],
@@ -557,23 +498,15 @@ function drawBoard() {
     [11,11]
   ];
 
-  ctx.fillStyle =
-    "#222";
+  ctx.fillStyle = "#222";
 
-  for (
-    const [x, y]
-    of stars
-  ) {
-
+  for (const [x, y] of stars) {
     ctx.beginPath();
 
     ctx.arc(
       margin + x * gap,
       margin + y * gap,
-      Math.max(
-        2.6,
-        gap * 0.08
-      ),
+      Math.max(2.6, gap * 0.08),
       0,
       Math.PI * 2
     );
@@ -581,24 +514,9 @@ function drawBoard() {
     ctx.fill();
   }
 
-
-  for (
-    let y = 0;
-    y < SIZE;
-    y++
-  ) {
-
-    for (
-      let x = 0;
-      x < SIZE;
-      x++
-    ) {
-
-      if (
-        board[y][x] !==
-        EMPTY
-      ) {
-
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      if (board[y][x] !== EMPTY) {
         drawStone(
           x,
           y,
@@ -610,29 +528,21 @@ function drawBoard() {
     }
   }
 
-
   if (lastMove) {
-
     const cx =
-      margin +
-      lastMove.x * gap;
+      margin + lastMove.x * gap;
 
     const cy =
-      margin +
-      lastMove.y * gap;
+      margin + lastMove.y * gap;
 
-    ctx.fillStyle =
-      "#e53935";
+    ctx.fillStyle = "#e53935";
 
     ctx.beginPath();
 
     ctx.arc(
       cx,
       cy,
-      Math.max(
-        2.4,
-        gap * 0.08
-      ),
+      Math.max(2.4, gap * 0.08),
       0,
       Math.PI * 2
     );
@@ -641,23 +551,10 @@ function drawBoard() {
   }
 }
 
-
-function drawStone(
-  x,
-  y,
-  color,
-  margin,
-  gap
-) {
-
-  const cx =
-    margin + x * gap;
-
-  const cy =
-    margin + y * gap;
-
-  const r =
-    gap * 0.43;
+function drawStone(x, y, color, margin, gap) {
+  const cx = margin + x * gap;
+  const cy = margin + y * gap;
+  const r = gap * 0.43;
 
   const gradient =
     ctx.createRadialGradient(
@@ -669,41 +566,14 @@ function drawStone(
       r
     );
 
-  if (
-    color === HUMAN
-  ) {
-
-    gradient.addColorStop(
-      0,
-      "#777"
-    );
-
-    gradient.addColorStop(
-      0.35,
-      "#333"
-    );
-
-    gradient.addColorStop(
-      1,
-      "#050505"
-    );
-
+  if (color === HUMAN) {
+    gradient.addColorStop(0, "#777");
+    gradient.addColorStop(0.35, "#333");
+    gradient.addColorStop(1, "#050505");
   } else {
-
-    gradient.addColorStop(
-      0,
-      "#fff"
-    );
-
-    gradient.addColorStop(
-      0.55,
-      "#f5f5f5"
-    );
-
-    gradient.addColorStop(
-      1,
-      "#c9c9c9"
-    );
+    gradient.addColorStop(0, "#fff");
+    gradient.addColorStop(0.55, "#f5f5f5");
+    gradient.addColorStop(1, "#c9c9c9");
   }
 
   ctx.beginPath();
@@ -716,9 +586,7 @@ function drawStone(
     Math.PI * 2
   );
 
-  ctx.fillStyle =
-    gradient;
-
+  ctx.fillStyle = gradient;
   ctx.fill();
 
   ctx.strokeStyle =
@@ -726,42 +594,28 @@ function drawStone(
       ? "#000"
       : "#777";
 
-  ctx.lineWidth =
-    1;
-
+  ctx.lineWidth = 1;
   ctx.stroke();
 }
 
 
-/* =============================
+/* =========================================================
    落子
-   ============================= */
+   ========================================================= */
 
-function placeMove(
-  x,
-  y,
-  color,
-  source
-) {
-
+function placeMove(x, y, color, source) {
   if (
-    x < 0 ||
-    x >= SIZE ||
-    y < 0 ||
-    y >= SIZE
+    x < 0 || x >= SIZE ||
+    y < 0 || y >= SIZE
   ) {
     return false;
   }
 
-  if (
-    board[y][x] !==
-    EMPTY
-  ) {
+  if (board[y][x] !== EMPTY) {
     return false;
   }
 
-  board[y][x] =
-    color;
+  board[y][x] = color;
 
   history.push({
     x,
@@ -770,10 +624,7 @@ function placeMove(
     source
   });
 
-  lastMove = {
-    x,
-    y
-  };
+  lastMove = { x, y };
 
   drawBoard();
   updateButtons();
@@ -781,16 +632,12 @@ function placeMove(
   return true;
 }
 
-
 function handleBoardPointer(e) {
-
   if (!aiReady) {
-
     setStatus(
       "AI 模型尚未加载完成",
       "loading"
     );
-
     return;
   }
 
@@ -805,43 +652,29 @@ function handleBoardPointer(e) {
   const rect =
     canvas.getBoundingClientRect();
 
-  const {
-    margin,
-    gap
-  } = getBoardGeometry();
+  const { margin, gap } =
+    getBoardGeometry();
 
   const px =
-    e.clientX -
-    rect.left;
+    e.clientX - rect.left;
 
   const py =
-    e.clientY -
-    rect.top;
+    e.clientY - rect.top;
 
   const x =
-    Math.round(
-      (px - margin) /
-      gap
-    );
+    Math.round((px - margin) / gap);
 
   const y =
-    Math.round(
-      (py - margin) /
-      gap
-    );
+    Math.round((py - margin) / gap);
 
   if (
-    x < 0 ||
-    x >= SIZE ||
-    y < 0 ||
-    y >= SIZE
+    x < 0 || x >= SIZE ||
+    y < 0 || y >= SIZE
   ) {
     return;
   }
 
-  if (
-    board[y][x] !== EMPTY
-  ) {
+  if (board[y][x] !== EMPTY) {
     return;
   }
 
@@ -852,50 +685,21 @@ function handleBoardPointer(e) {
     "human"
   );
 
-
-  if (
-    checkWin(
-      x,
-      y,
-      HUMAN
-    )
-  ) {
-
-    gameOver =
-      true;
-
-    setStatus(
-      "你获胜了！",
-      "win"
-    );
-
+  if (checkWin(x, y, HUMAN)) {
+    gameOver = true;
+    setStatus("你获胜了！", "win");
     updateButtons();
-
     return;
   }
 
-
-  if (
-    isBoardFull()
-  ) {
-
-    gameOver =
-      true;
-
-    setStatus(
-      "平局。",
-      "win"
-    );
-
+  if (isBoardFull()) {
+    gameOver = true;
+    setStatus("平局。", "win");
     updateButtons();
-
     return;
   }
 
-
-  currentPlayer =
-    AI;
-
+  currentPlayer = AI;
   updateStatus();
 
   setTimeout(
@@ -905,24 +709,12 @@ function handleBoardPointer(e) {
 }
 
 
-/* =============================
+/* =========================================================
    模型输入
-   ============================= */
+   ========================================================= */
 
-function boardToTensor(
-  aiColor
-) {
-
-  /*
-    channel 0 = 当前玩家
-    channel 1 = 对手
-    channel 2 = 空位
-
-    shape = [1, 3, 15, 15]
-  */
-
-  const total =
-    SIZE * SIZE;
+function boardToTensor(aiColor) {
+  const total = SIZE * SIZE;
 
   const data =
     new Float32Array(
@@ -934,45 +726,19 @@ function boardToTensor(
       ? AI
       : HUMAN;
 
-  for (
-    let y = 0;
-    y < SIZE;
-    y++
-  ) {
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      const idx = y * SIZE + x;
+      const p = board[y][x];
 
-    for (
-      let x = 0;
-      x < SIZE;
-      x++
-    ) {
+      if (p === aiColor) {
+        data[idx] = 1.0;
 
-      const idx =
-        y * SIZE + x;
-
-      const p =
-        board[y][x];
-
-      if (
-        p === aiColor
-      ) {
-
-        data[idx] =
-          1.0;
-
-      } else if (
-        p === opponent
-      ) {
-
-        data[
-          total + idx
-        ] = 1.0;
+      } else if (p === opponent) {
+        data[total + idx] = 1.0;
 
       } else {
-
-        data[
-          2 * total +
-          idx
-        ] = 1.0;
+        data[2 * total + idx] = 1.0;
       }
     }
   }
@@ -980,23 +746,17 @@ function boardToTensor(
   return new ort.Tensor(
     "float32",
     data,
-    [
-      1,
-      3,
-      SIZE,
-      SIZE
-    ]
+    [1, 3, SIZE, SIZE]
   );
 }
 
 
-/* =============================
-   AI 推理
-   当前版本：Policy 最大值
-   ============================= */
+/* =========================================================
+   AI
+   当前先直接取 policy 最高合法点
+   ========================================================= */
 
 async function normalAIMove() {
-
   if (
     !aiReady ||
     !aiSession ||
@@ -1006,154 +766,89 @@ async function normalAIMove() {
     return;
   }
 
-  aiThinking =
-    true;
-
+  aiThinking = true;
   updateStatus();
   updateButtons();
 
   await new Promise(
     resolve =>
-      setTimeout(
-        resolve,
-        40
-      )
+      setTimeout(resolve, 40)
   );
 
   try {
-
     const inputTensor =
       boardToTensor(AI);
 
     const inputName =
-      aiSession.inputNames.includes(
-        "board"
-      )
+      aiSession.inputNames.includes("board")
         ? "board"
         : aiSession.inputNames[0];
 
     const feeds = {};
-
-    feeds[inputName] =
-      inputTensor;
+    feeds[inputName] = inputTensor;
 
     const results =
-      await aiSession.run(
-        feeds
-      );
-
+      await aiSession.run(feeds);
 
     const valueTensor =
       results.value ||
-      results[
-        aiSession.outputNames[0]
-      ];
+      results[aiSession.outputNames[0]];
 
     const policyTensor =
       results.policy ||
-      results[
-        aiSession.outputNames[1]
-      ];
+      results[aiSession.outputNames[1]];
 
-
-    if (
-      !valueTensor ||
-      !policyTensor
-    ) {
-
+    if (!valueTensor || !policyTensor) {
       throw new Error(
-        "未找到 value / policy 输出"
+        "找不到 value / policy 输出"
       );
     }
 
-
     const value =
-      Number(
-        valueTensor.data[0]
-      );
+      Number(valueTensor.data[0]);
 
     const policy =
       policyTensor.data;
 
+    lastAIValue = value;
 
-    lastAIValue =
-      value;
+    let bestIndex = -1;
+    let bestProb = -Infinity;
 
-
-    let bestIndex =
-      -1;
-
-    let bestProb =
-      -Infinity;
-
-
-    for (
-      let y = 0;
-      y < SIZE;
-      y++
-    ) {
-
-      for (
-        let x = 0;
-        x < SIZE;
-        x++
-      ) {
-
-        if (
-          board[y][x] !==
-          EMPTY
-        ) {
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        if (board[y][x] !== EMPTY) {
           continue;
         }
 
-        const idx =
-          y * SIZE + x;
+        const idx = y * SIZE + x;
+        const p = Number(policy[idx]);
 
-        const p =
-          Number(
-            policy[idx]
-          );
-
-
-        if (
-          p >
-          bestProb
-        ) {
-
-          bestProb =
-            p;
-
-          bestIndex =
-            idx;
+        if (p > bestProb) {
+          bestProb = p;
+          bestIndex = idx;
         }
       }
     }
 
-
-    if (
-      bestIndex < 0
-    ) {
-
+    if (bestIndex < 0) {
       throw new Error(
-        "没有找到合法落子"
+        "没有找到合法 AI 落子"
       );
     }
 
-
+    /*
+       PyTorch flatten / JS 对应关系：
+       index = row * 15 + col
+       即：
+       y = row
+       x = col
+    */
     const x =
-      bestIndex %
-      SIZE;
+      bestIndex % SIZE;
 
     const y =
-      Math.floor(
-        bestIndex /
-        SIZE
-      );
-
-
-    lastAIProb =
-      bestProb;
-
+      Math.floor(bestIndex / SIZE);
 
     console.log(
       "AI move:",
@@ -1161,11 +856,9 @@ async function normalAIMove() {
         x,
         y,
         value,
-        probability:
-          bestProb
+        probability: bestProb
       }
     );
-
 
     placeMove(
       x,
@@ -1174,20 +867,9 @@ async function normalAIMove() {
       "onnx-policy"
     );
 
-
-    if (
-      checkWin(
-        x,
-        y,
-        AI
-      )
-    ) {
-
-      gameOver =
-        true;
-
-      aiThinking =
-        false;
+    if (checkWin(x, y, AI)) {
+      gameOver = true;
+      aiThinking = false;
 
       setStatus(
         "AI 获胜！ Value = " +
@@ -1196,20 +878,12 @@ async function normalAIMove() {
       );
 
       updateButtons();
-
       return;
     }
 
-
-    if (
-      isBoardFull()
-    ) {
-
-      gameOver =
-        true;
-
-      aiThinking =
-        false;
+    if (isBoardFull()) {
+      gameOver = true;
+      aiThinking = false;
 
       setStatus(
         "平局。",
@@ -1217,46 +891,31 @@ async function normalAIMove() {
       );
 
       updateButtons();
-
       return;
     }
 
-
-    currentPlayer =
-      HUMAN;
-
-    aiThinking =
-      false;
-
+    currentPlayer = HUMAN;
+    aiThinking = false;
 
     modelInfoEl.textContent =
-      "模型：gomoku.onnx + gomoku.onnx.data" +
-      " · AI Value = " +
+      "AI 已运行 · Value = " +
       value.toFixed(4) +
       " · Policy = " +
       bestProb.toFixed(6) +
-      " · 落子 = (" +
-      x +
-      ", " +
-      y +
-      ")";
-
+      " · AI 落子 = (" +
+      x + ", " + y + ")";
 
     updateStatus();
     updateButtons();
 
   } catch (err) {
-
     console.error(
-      "AI inference failed:",
+      "AI inference error:",
       err
     );
 
-    aiThinking =
-      false;
-
-    currentPlayer =
-      HUMAN;
+    aiThinking = false;
+    currentPlayer = HUMAN;
 
     setStatus(
       "AI 推理失败",
@@ -1266,8 +925,7 @@ async function normalAIMove() {
     modelInfoEl.textContent =
       "推理错误：" +
       (
-        err &&
-        err.message
+        err && err.message
           ? err.message
           : String(err)
       );
@@ -1277,16 +935,11 @@ async function normalAIMove() {
 }
 
 
-/* =============================
-   胜负判断
-   ============================= */
+/* =========================================================
+   胜负
+   ========================================================= */
 
-function checkWin(
-  x,
-  y,
-  player
-) {
-
+function checkWin(x, y, player) {
   const dirs = [
     [1,0],
     [0,1],
@@ -1294,85 +947,40 @@ function checkWin(
     [1,-1]
   ];
 
-  for (
-    const [dx, dy]
-    of dirs
-  ) {
+  for (const [dx, dy] of dirs) {
+    let count = 1;
 
-    let count =
-      1;
-
-
-    for (
-      let step = 1;
-      step < 5;
-      step++
-    ) {
-
-      const nx =
-        x +
-        dx * step;
-
-      const ny =
-        y +
-        dy * step;
-
+    for (let step = 1; step < 5; step++) {
+      const nx = x + dx * step;
+      const ny = y + dy * step;
 
       if (
-        nx >= 0 &&
-        nx < SIZE &&
-        ny >= 0 &&
-        ny < SIZE &&
-        board[ny][nx] ===
-        player
+        nx >= 0 && nx < SIZE &&
+        ny >= 0 && ny < SIZE &&
+        board[ny][nx] === player
       ) {
-
         count++;
-
       } else {
-
         break;
       }
     }
 
-
-    for (
-      let step = 1;
-      step < 5;
-      step++
-    ) {
-
-      const nx =
-        x -
-        dx * step;
-
-      const ny =
-        y -
-        dy * step;
-
+    for (let step = 1; step < 5; step++) {
+      const nx = x - dx * step;
+      const ny = y - dy * step;
 
       if (
-        nx >= 0 &&
-        nx < SIZE &&
-        ny >= 0 &&
-        ny < SIZE &&
-        board[ny][nx] ===
-        player
+        nx >= 0 && nx < SIZE &&
+        ny >= 0 && ny < SIZE &&
+        board[ny][nx] === player
       ) {
-
         count++;
-
       } else {
-
         break;
       }
     }
 
-
-    if (
-      count >= 5
-    ) {
-
+    if (count >= 5) {
       return true;
     }
   }
@@ -1380,26 +988,10 @@ function checkWin(
   return false;
 }
 
-
 function isBoardFull() {
-
-  for (
-    let y = 0;
-    y < SIZE;
-    y++
-  ) {
-
-    for (
-      let x = 0;
-      x < SIZE;
-      x++
-    ) {
-
-      if (
-        board[y][x] ===
-        EMPTY
-      ) {
-
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      if (board[y][x] === EMPTY) {
         return false;
       }
     }
@@ -1409,12 +1001,11 @@ function isBoardFull() {
 }
 
 
-/* =============================
+/* =========================================================
    悔棋
-   ============================= */
+   ========================================================= */
 
 function undoHumanAIPair() {
-
   if (
     aiThinking ||
     history.length === 0
@@ -1422,76 +1013,43 @@ function undoHumanAIPair() {
     return;
   }
 
-  gameOver =
-    false;
-
+  gameOver = false;
 
   if (
     history.length > 0 &&
-    history[
-      history.length - 1
-    ].color === AI
+    history[history.length - 1].color === AI
   ) {
-
-    const m =
-      history.pop();
-
-    board[m.y][m.x] =
-      EMPTY;
+    const m = history.pop();
+    board[m.y][m.x] = EMPTY;
   }
-
 
   if (
     history.length > 0 &&
-    history[
-      history.length - 1
-    ].color === HUMAN
+    history[history.length - 1].color === HUMAN
   ) {
-
-    const m =
-      history.pop();
-
-    board[m.y][m.x] =
-      EMPTY;
+    const m = history.pop();
+    board[m.y][m.x] = EMPTY;
   }
 
-
-  if (
-    history.length > 0
-  ) {
-
+  if (history.length > 0) {
     const m =
-      history[
-        history.length - 1
-      ];
+      history[history.length - 1];
 
     lastMove = {
       x: m.x,
       y: m.y
     };
-
   } else {
-
-    lastMove =
-      null;
+    lastMove = null;
   }
 
-
-  currentPlayer =
-    HUMAN;
-
-  lastAIValue =
-    null;
-
-  lastAIProb =
-    null;
-
+  currentPlayer = HUMAN;
+  lastAIValue = null;
 
   modelInfoEl.textContent =
     aiReady
       ? "AI 模型已加载 · 已悔棋"
-      : "模型：gomoku.onnx + gomoku.onnx.data";
-
+      : "准备加载模型";
 
   drawBoard();
   updateStatus();
@@ -1499,9 +1057,9 @@ function undoHumanAIPair() {
 }
 
 
-/* =============================
+/* =========================================================
    事件
-   ============================= */
+   ========================================================= */
 
 canvas.addEventListener(
   "pointerdown",
@@ -1520,21 +1078,15 @@ undoBtn.addEventListener(
 
 reloadBtn.addEventListener(
   "click",
-  async () => {
-    await loadAIModel();
-  }
+  loadAIModel
 );
 
 restartBtn.addEventListener(
   "click",
   () => {
-
     initGame();
 
-    if (
-      aiReady
-    ) {
-
+    if (aiReady) {
       modelInfoEl.textContent =
         "AI 模型已加载 · 新棋局";
     }
@@ -1542,9 +1094,9 @@ restartBtn.addEventListener(
 );
 
 
-/* =============================
+/* =========================================================
    启动
-   ============================= */
+   ========================================================= */
 
 initApp();
 
