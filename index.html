@@ -4,149 +4,446 @@
   <meta charset="UTF-8">
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>五子棋 AI · UINT8 Adaptive MCTS</title>
+  <meta name="theme-color" content="#07111f">
+  <title>五子棋 AI · Adaptive MCTS</title>
 
   <style>
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --bg-0: #050b13;
+      --bg-1: #07111f;
+      --bg-2: #0b1b2f;
+      --panel: rgba(14, 28, 48, .72);
+      --panel-2: rgba(20, 39, 65, .62);
+      --line: rgba(133, 190, 255, .18);
+      --line-strong: rgba(133, 190, 255, .34);
+      --text: #f4f8ff;
+      --muted: #8fa4bc;
+      --cyan: #58d6ff;
+      --blue: #3399ff;
+      --green: #56e6c1;
+      --danger: #ff7a8c;
+      --shadow: 0 18px 50px rgba(0,0,0,.34);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
 
     html, body {
       margin: 0;
       min-height: 100%;
-      background: #f3f3f3;
-      font-family: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;
-      color: #222;
+      color: var(--text);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system,
+        BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei",
+        "PingFang SC", sans-serif;
+      background:
+        radial-gradient(circle at 80% -10%, rgba(54,157,255,.24), transparent 30%),
+        radial-gradient(circle at 15% 25%, rgba(56,210,255,.08), transparent 26%),
+        linear-gradient(180deg, var(--bg-2), var(--bg-0) 62%, #03070c 100%);
     }
 
-    body { display: flex; justify-content: center; }
-
-    .app {
-      width: 100%;
-      max-width: 640px;
-      padding: 12px 10px 22px;
-    }
-
-    h1 {
-      margin: 4px 0;
-      text-align: center;
-      font-size: 24px;
-    }
-
-    .subtitle {
-      text-align: center;
-      color: #777;
-      font-size: 13px;
-      margin-bottom: 10px;
-    }
-
-    .panel {
-      background: #fff;
-      border-radius: 12px;
-      padding: 10px 12px;
-      margin-bottom: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.06);
-    }
-
-    .status {
-      min-height: 24px;
-      text-align: center;
-      font-size: 17px;
-      font-weight: 700;
-      line-height: 24px;
-    }
-
-    .loading { color: #1565c0; }
-    .error   { color: #c62828; }
-    .ai      { color: #7b1fa2; }
-    .win     { color: #d84315; }
-
-    .model-info {
-      margin-top: 6px;
-      text-align: center;
-      color: #666;
-      font-size: 12px;
-      line-height: 1.5;
-      word-break: break-word;
-    }
-
-    .board-wrap {
-      width: 100%;
+    body {
       display: flex;
       justify-content: center;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .22;
+      background-image:
+        linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: linear-gradient(to bottom, black 0%, transparent 70%);
+    }
+
+    .app {
+      width: min(100%, 760px);
+      padding: 18px 14px 28px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .brand-wrap { min-width: 0; }
+
+    .brand {
+      margin: 0;
+      letter-spacing: .04em;
+      font-size: clamp(25px, 5vw, 36px);
+      font-weight: 780;
+      line-height: 1.1;
+    }
+
+    .brand span {
+      background: linear-gradient(90deg, #f7fbff, var(--cyan));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .brand-sub {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .08em;
+    }
+
+    .engine-dot {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: #cfe8ff;
+      background: rgba(11,25,43,.74);
+      border: 1px solid var(--line);
+      box-shadow: inset 0 0 20px rgba(75,166,255,.05);
+    }
+
+    .engine-dot i {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: block;
+      background: var(--green);
+      box-shadow: 0 0 12px rgba(86,230,193,.8);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      border-radius: 22px;
+      padding: 16px;
+      margin-bottom: 14px;
+      background:
+        linear-gradient(135deg,
+          rgba(18,40,68,.92),
+          rgba(9,23,40,.82));
+      border: 1px solid var(--line-strong);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.06),
+        0 20px 60px rgba(0,0,0,.24);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 190px;
+      height: 190px;
+      right: -65px;
+      top: -80px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle,
+          rgba(63,180,255,.28),
+          rgba(42,112,255,.07) 46%,
+          transparent 70%);
+      filter: blur(3px);
+      pointer-events: none;
+    }
+
+    .hero-main {
+      display: grid;
+      grid-template-columns: 70px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .ai-orb {
+      width: 66px;
+      height: 66px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 23px;
+      letter-spacing: .04em;
+      color: #dff7ff;
+      border: 1px solid rgba(90,210,255,.65);
+      background:
+        radial-gradient(circle at 35% 30%, rgba(94,220,255,.35), rgba(12,45,77,.72) 48%, #071320);
+      box-shadow:
+        inset 0 0 18px rgba(61,190,255,.25),
+        0 0 0 6px rgba(72,171,255,.07),
+        0 0 30px rgba(46,165,255,.25);
+    }
+
+    .hero-title {
+      margin: 0;
+      font-size: 19px;
+      font-weight: 760;
+    }
+
+    .hero-desc {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .ready {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: var(--green);
+      letter-spacing: .08em;
+      font-weight: 720;
+    }
+
+    .ready-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 12px rgba(86,230,193,.8);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 12px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .chip {
+      padding: 5px 9px;
+      border-radius: 999px;
+      color: #a9c2dc;
+      font-size: 11px;
+      letter-spacing: .03em;
+      border: 1px solid rgba(145,190,236,.20);
+      background: rgba(6,15,27,.34);
+    }
+
+    .board-shell {
+      padding: 8px;
+      border-radius: 24px;
+      background:
+        linear-gradient(180deg,
+          rgba(40,67,94,.38),
+          rgba(12,25,41,.48));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .board-inner {
+      padding: 9px;
+      border-radius: 18px;
+      background:
+        linear-gradient(135deg,
+          #e1b46d,
+          #c48b47 52%,
+          #d39d57);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.28),
+        inset 0 0 32px rgba(85,42,10,.10);
     }
 
     canvas {
-      width: 100%;
-      max-width: 600px;
-      aspect-ratio: 1 / 1;
       display: block;
-      background: #d2a05b;
-      border-radius: 8px;
-      box-shadow: 0 3px 14px rgba(0,0,0,.15);
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 12px;
       touch-action: none;
       user-select: none;
     }
 
-    .buttons {
+    .metrics {
+      margin-top: 14px;
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 9px;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 11px 10px;
+      border-radius: 15px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: .05em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric-value {
+      margin-top: 4px;
+      font-size: 16px;
+      font-weight: 730;
+      color: #f5f9ff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric-sub {
+      margin-top: 2px;
+      color: #6f86a0;
+      font-size: 9px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-line {
+      margin-top: 11px;
+      min-height: 42px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 8px 12px;
+      border-radius: 14px;
+      font-size: 14px;
+      font-weight: 690;
+      color: #dfeeff;
+      background: rgba(8,19,33,.68);
+      border: 1px solid rgba(130,181,232,.13);
+    }
+
+    .status-line.loading { color: #91cfff; }
+    .status-line.ai { color: #7edcff; }
+    .status-line.win { color: #ffd27d; }
+    .status-line.error { color: #ff96a6; }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      gap: 10px;
       margin-top: 12px;
     }
 
     button {
-      border: none;
-      border-radius: 9px;
-      padding: 12px 8px;
-      min-height: 44px;
-      font-size: 15px;
-      font-weight: 600;
+      min-height: 48px;
+      border: 1px solid rgba(134,181,228,.20);
+      border-radius: 15px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #dcecff;
       cursor: pointer;
+      background:
+        linear-gradient(180deg,
+          rgba(21,39,62,.88),
+          rgba(10,23,39,.88));
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.04),
+        0 10px 26px rgba(0,0,0,.14);
+      transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease;
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(1px) scale(.995);
     }
 
     button:disabled {
-      opacity: .48;
-      cursor: not-allowed;
+      opacity: .42;
+      cursor: default;
     }
 
-    #undoBtn    { background: #e3e3e3; color: #222; }
-    #reloadBtn  { background: #1976d2; color: #fff; }
-    #restartBtn { background: #333; color: #fff; }
-
-    .legend {
-      display: flex;
-      justify-content: center;
-      gap: 18px;
-      margin-top: 10px;
-      font-size: 13px;
-      color: #555;
+    #reloadBtn {
+      color: #eaf9ff;
+      border-color: rgba(76,190,255,.56);
+      background:
+        linear-gradient(180deg,
+          rgba(18,92,148,.82),
+          rgba(10,53,93,.90));
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.07),
+        0 0 24px rgba(49,164,255,.14);
     }
 
-    .dot {
-      display: inline-block;
-      width: 13px;
-      height: 13px;
-      border-radius: 50%;
-      vertical-align: -2px;
-      margin-right: 4px;
-      border: 1px solid #555;
-    }
-
-    .dot.black { background: #111; }
-    .dot.white { background: #fff; }
-
-    .tips {
-      margin-top: 10px;
-      font-size: 12px;
-      line-height: 1.55;
-      color: #777;
+    .footnote {
+      margin-top: 14px;
       text-align: center;
+      color: #607994;
+      font-size: 10px;
+      line-height: 1.6;
+      letter-spacing: .04em;
     }
 
-    @media (max-width: 420px) {
-      .app { padding-left: 8px; padding-right: 8px; }
-      h1 { font-size: 22px; }
-      .status { font-size: 16px; }
-      button { font-size: 14px; }
+    @media (max-width: 560px) {
+      .app { padding: 12px 9px 22px; }
+      .topbar { margin-bottom: 10px; }
+
+      .engine-dot {
+        padding: 7px 9px;
+        font-size: 10px;
+      }
+
+      .hero {
+        padding: 13px;
+        border-radius: 18px;
+      }
+
+      .hero-main {
+        grid-template-columns: 58px minmax(0, 1fr) auto;
+        gap: 10px;
+      }
+
+      .ai-orb {
+        width: 54px;
+        height: 54px;
+        font-size: 19px;
+      }
+
+      .hero-title { font-size: 17px; }
+      .hero-desc { font-size: 11px; }
+      .chip { font-size: 10px; }
+
+      .board-shell {
+        padding: 6px;
+        border-radius: 19px;
+      }
+
+      .board-inner {
+        padding: 6px;
+        border-radius: 15px;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .metric {
+        padding: 9px 10px;
+      }
+
+      .actions {
+        gap: 7px;
+      }
+
+      button {
+        min-height: 46px;
+        font-size: 13px;
+        padding: 0 7px;
+      }
     }
   </style>
 </head>
@@ -154,34 +451,86 @@
 <body>
 <div class="app">
 
-  <h1>五子棋 AI</h1>
-  <div class="subtitle">UINT8 · WASM · Adaptive MCTS 50/100/150 · 15 × 15</div>
-
-  <div class="panel">
-    <div id="status" class="status loading">正在加载 AI...</div>
-    <div id="modelInfo" class="model-info">
-      准备加载 147 KB UINT8 模型 · Web Worker · WASM
+  <header class="topbar">
+    <div class="brand-wrap">
+      <h1 class="brand">五子棋 <span>AI</span></h1>
+      <div class="brand-sub">ADAPTIVE SEARCH ENGINE</div>
     </div>
+
+    <div class="engine-dot">
+      <i></i>
+      ONLINE
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-main">
+      <div class="ai-orb">AI</div>
+
+      <div>
+        <div class="hero-title" id="heroTitle">AI 正在初始化</div>
+        <div class="hero-desc" id="heroDesc">
+          正在建立本地 WASM 推理会话
+        </div>
+      </div>
+
+      <div class="ready">
+        <span class="ready-dot"></span>
+        READY
+      </div>
+    </div>
+
+    <div class="chips">
+      <span class="chip">UINT8</span>
+      <span class="chip">WASM</span>
+      <span class="chip">147 KB</span>
+      <span class="chip">MCTS 50 / 100 / 150</span>
+    </div>
+  </section>
+
+  <section class="board-shell">
+    <div class="board-inner">
+      <canvas id="board"></canvas>
+    </div>
+  </section>
+
+  <section class="metrics">
+    <div class="metric">
+      <div class="metric-label">当前模式</div>
+      <div class="metric-value">标准对局</div>
+      <div class="metric-sub">15 × 15</div>
+    </div>
+
+    <div class="metric">
+      <div class="metric-label">AI 思考时间</div>
+      <div class="metric-value" id="timeMetric">—</div>
+      <div class="metric-sub">last move</div>
+    </div>
+
+    <div class="metric">
+      <div class="metric-label">搜索次数</div>
+      <div class="metric-value" id="simsMetric">—</div>
+      <div class="metric-sub">adaptive MCTS</div>
+    </div>
+
+    <div class="metric">
+      <div class="metric-label">局面评估</div>
+      <div class="metric-value" id="valueMetric">—</div>
+      <div class="metric-sub">AI perspective</div>
+    </div>
+  </section>
+
+  <div id="status" class="status-line loading">正在加载 AI...</div>
+
+  <div class="actions">
+    <button id="undoBtn">↶ 悔棋</button>
+    <button id="reloadBtn">◉ 重新加载 AI</button>
+    <button id="restartBtn">↻ 重新开始</button>
   </div>
 
-  <div class="board-wrap">
-    <canvas id="board"></canvas>
-  </div>
-
-  <div class="buttons">
-    <button id="undoBtn">悔棋</button>
-    <button id="reloadBtn">重新加载 AI</button>
-    <button id="restartBtn">重新开始</button>
-  </div>
-
-  <div class="legend">
-    <span><span class="dot black"></span>你（黑棋）</span>
-    <span><span class="dot white"></span>AI（白棋）</span>
-  </div>
-
-  <div class="tips">
-    AI：一步必赢/必堵 → 自适应 MCTS 50/100/150。<br>
-    简单局面少搜索，困难局面自动增加搜索；计算在 Worker 中进行，不阻塞棋盘界面。
+  <div class="footnote">
+    Rule + UINT8 Gen1 + Adaptive MCTS<br>
+    简单局面快速决策 · 困难局面自动加深
   </div>
 
 </div>
@@ -189,22 +538,23 @@
 <script>
 "use strict";
 
-/* =========================================================
-   基本设置
-   ========================================================= */
-
 const SIZE = 15;
 const EMPTY = 0;
 const HUMAN = 1;
 const AI = 2;
 
-const AI_WORKER_URL = "./ai-worker.js?v=u8-adaptive-20260910-1";
+const AI_WORKER_URL = "./ai-worker.js?v=tech-ui-20260911-1";
 
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 
 const statusEl = document.getElementById("status");
-const modelInfoEl = document.getElementById("modelInfo");
+const heroTitleEl = document.getElementById("heroTitle");
+const heroDescEl = document.getElementById("heroDesc");
+
+const timeMetricEl = document.getElementById("timeMetric");
+const simsMetricEl = document.getElementById("simsMetric");
+const valueMetricEl = document.getElementById("valueMetric");
 
 const undoBtn = document.getElementById("undoBtn");
 const reloadBtn = document.getElementById("reloadBtn");
@@ -223,22 +573,47 @@ let aiReady = false;
 let lastAIValue = null;
 let pendingSearchId = 0;
 
-
-/* =========================================================
-   UI
-   ========================================================= */
-
 function setStatus(text, cls = "") {
   statusEl.textContent = text;
-  statusEl.className = "status";
+  statusEl.className = "status-line";
   if (cls) statusEl.classList.add(cls);
 }
 
+function updateHero() {
+  if (!aiReady) {
+    heroTitleEl.textContent = "AI 正在初始化";
+    heroDescEl.textContent = "正在建立本地 WASM 推理会话";
+    return;
+  }
+
+  if (aiThinking) {
+    heroTitleEl.textContent = "AI 正在思考";
+    heroDescEl.textContent = "根据局面复杂度自适应调整搜索深度";
+    return;
+  }
+
+  if (gameOver) {
+    heroTitleEl.textContent = "本局已结束";
+    heroDescEl.textContent = "可以悔棋或重新开始";
+    return;
+  }
+
+  if (currentPlayer === HUMAN) {
+    heroTitleEl.textContent = "轮到你了";
+    heroDescEl.textContent = "你执黑棋 · AI 执白棋";
+  } else {
+    heroTitleEl.textContent = "AI 准备落子";
+    heroDescEl.textContent = "Adaptive MCTS 50 / 100 / 150";
+  }
+}
+
 function updateStatus() {
+  updateHero();
+
   if (gameOver) return;
 
   if (!aiReady) {
-    setStatus("正在等待 AI 模型...", "loading");
+    setStatus("正在加载 AI 模型...", "loading");
     return;
   }
 
@@ -248,11 +623,7 @@ function updateStatus() {
   }
 
   if (currentPlayer === HUMAN) {
-    let text = "轮到你：黑棋 ●";
-    if (lastAIValue !== null) {
-      text += " | AI Value = " + lastAIValue.toFixed(3);
-    }
-    setStatus(text);
+    setStatus("轮到你：黑棋 ●");
   } else {
     setStatus("轮到 AI：白棋 ○", "ai");
   }
@@ -264,10 +635,31 @@ function updateButtons() {
   restartBtn.disabled = aiThinking;
 }
 
+function resetMetrics() {
+  timeMetricEl.textContent = "—";
+  simsMetricEl.textContent = "—";
+  valueMetricEl.textContent = "—";
+}
 
-/* =========================================================
-   初始化
-   ========================================================= */
+function updateMetrics(data) {
+  const ms = Number(data.elapsedMs);
+  const sims = Number(data.simulations);
+
+  timeMetricEl.textContent =
+    Number.isFinite(ms)
+      ? (ms < 1000 ? ms.toFixed(0) + " ms" : (ms / 1000).toFixed(2) + " s")
+      : "—";
+
+  simsMetricEl.textContent =
+    Number.isFinite(sims)
+      ? String(sims)
+      : "—";
+
+  valueMetricEl.textContent =
+    Number.isFinite(data.rootValue)
+      ? Number(data.rootValue).toFixed(3)
+      : "—";
+}
 
 function initGame() {
   board = Array.from(
@@ -283,6 +675,7 @@ function initGame() {
   lastAIValue = null;
   pendingSearchId++;
 
+  resetMetrics();
   resizeCanvas();
   updateStatus();
   updateButtons();
@@ -300,8 +693,7 @@ function loadAIWorker() {
   destroyAIWorker();
 
   setStatus("正在加载 147 KB UINT8 AI...", "loading");
-  modelInfoEl.textContent =
-    "UINT8 QOperator · WASM · Worker · 正在建立推理会话";
+  updateHero();
 
   const worker = new Worker(AI_WORKER_URL);
   aiWorker = worker;
@@ -315,8 +707,8 @@ function loadAIWorker() {
     aiReady = false;
     aiThinking = false;
     setStatus("AI Worker 加载失败", "error");
-    modelInfoEl.textContent =
-      "Worker 错误：" + (event.message || "未知错误");
+    heroTitleEl.textContent = "AI 加载失败";
+    heroDescEl.textContent = event.message || "请检查模型文件";
     updateButtons();
   };
 
@@ -327,11 +719,6 @@ function initApp() {
   initGame();
   loadAIWorker();
 }
-
-
-/* =========================================================
-   Canvas 绘制
-   ========================================================= */
 
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
@@ -347,7 +734,7 @@ function resizeCanvas() {
 
 function getBoardGeometry() {
   const w = canvas.clientWidth;
-  const margin = w * 0.055;
+  const margin = w * 0.058;
   const gap = (w - 2 * margin) / (SIZE - 1);
   return { w, margin, gap };
 }
@@ -356,10 +743,30 @@ function drawBoard() {
   const { w, margin, gap } = getBoardGeometry();
 
   ctx.clearRect(0, 0, w, w);
-  ctx.fillStyle = "#d2a05b";
+
+  const wood = ctx.createLinearGradient(0, 0, w, w);
+  wood.addColorStop(0, "#e2b76f");
+  wood.addColorStop(.48, "#c8914c");
+  wood.addColorStop(1, "#d9a65f");
+
+  ctx.fillStyle = wood;
   ctx.fillRect(0, 0, w, w);
 
-  ctx.strokeStyle = "#303030";
+  ctx.save();
+  ctx.globalAlpha = .07;
+  ctx.strokeStyle = "#6f3f16";
+  ctx.lineWidth = 1;
+
+  for (let k = 0; k < 24; k++) {
+    const y = (k + .5) * w / 24;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.bezierCurveTo(w*.25, y-3, w*.65, y+4, w, y-1);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = "rgba(36,28,20,.82)";
   ctx.lineWidth = 1;
 
   for (let i = 0; i < SIZE; i++) {
@@ -380,14 +787,14 @@ function drawBoard() {
     [3,3], [11,3], [7,7], [3,11], [11,11]
   ];
 
-  ctx.fillStyle = "#222";
+  ctx.fillStyle = "#201813";
 
   for (const [x, y] of stars) {
     ctx.beginPath();
     ctx.arc(
       margin + x * gap,
       margin + y * gap,
-      Math.max(2.6, gap * 0.08),
+      Math.max(2.4, gap * 0.075),
       0,
       Math.PI * 2
     );
@@ -405,58 +812,66 @@ function drawBoard() {
   if (lastMove) {
     const cx = margin + lastMove.x * gap;
     const cy = margin + lastMove.y * gap;
+    const r = gap * 0.51;
 
-    ctx.fillStyle = "#e53935";
+    ctx.save();
+    ctx.strokeStyle = "#4dd8ff";
+    ctx.lineWidth = Math.max(1.5, gap * 0.055);
+    ctx.shadowColor = "#31bfff";
+    ctx.shadowBlur = Math.max(8, gap * 0.42);
+
     ctx.beginPath();
-    ctx.arc(
-      cx, cy,
-      Math.max(2.4, gap * 0.08),
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
   }
 }
 
 function drawStone(x, y, color, margin, gap) {
   const cx = margin + x * gap;
   const cy = margin + y * gap;
-  const r = gap * 0.43;
+  const r = gap * 0.42;
 
-  const gradient =
-    ctx.createRadialGradient(
-      cx - r * 0.35,
-      cy - r * 0.35,
-      r * 0.08,
-      cx,
-      cy,
-      r
-    );
+  const gradient = ctx.createRadialGradient(
+    cx - r * .34,
+    cy - r * .36,
+    r * .08,
+    cx, cy, r
+  );
 
   if (color === HUMAN) {
-    gradient.addColorStop(0, "#777");
-    gradient.addColorStop(0.35, "#333");
-    gradient.addColorStop(1, "#050505");
+    gradient.addColorStop(0, "#7e8792");
+    gradient.addColorStop(.23, "#343941");
+    gradient.addColorStop(.68, "#111418");
+    gradient.addColorStop(1, "#020304");
   } else {
-    gradient.addColorStop(0, "#fff");
-    gradient.addColorStop(0.55, "#f5f5f5");
-    gradient.addColorStop(1, "#c9c9c9");
+    gradient.addColorStop(0, "#ffffff");
+    gradient.addColorStop(.52, "#f0f3f6");
+    gradient.addColorStop(1, "#adb5be");
   }
+
+  ctx.save();
+  ctx.shadowColor =
+    color === HUMAN
+      ? "rgba(0,0,0,.48)"
+      : "rgba(0,0,0,.24)";
+  ctx.shadowBlur = gap * .16;
+  ctx.shadowOffsetY = gap * .08;
 
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = gradient;
   ctx.fill();
+  ctx.restore();
 
-  ctx.strokeStyle = color === HUMAN ? "#000" : "#777";
+  ctx.strokeStyle =
+    color === HUMAN
+      ? "rgba(0,0,0,.82)"
+      : "rgba(82,88,94,.65)";
   ctx.lineWidth = 1;
   ctx.stroke();
 }
-
-
-/* =========================================================
-   落子
-   ========================================================= */
 
 function placeMove(x, y, color, source) {
   if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) {
@@ -468,7 +883,6 @@ function placeMove(x, y, color, source) {
   }
 
   board[y][x] = color;
-
   history.push({ x, y, color, source });
   lastMove = { x, y };
 
@@ -483,7 +897,11 @@ function handleBoardPointer(e) {
     return;
   }
 
-  if (gameOver || aiThinking || currentPlayer !== HUMAN) {
+  if (
+    gameOver ||
+    aiThinking ||
+    currentPlayer !== HUMAN
+  ) {
     return;
   }
 
@@ -509,6 +927,7 @@ function handleBoardPointer(e) {
   if (checkWin(x, y, HUMAN)) {
     gameOver = true;
     setStatus("你获胜了！", "win");
+    updateHero();
     updateButtons();
     return;
   }
@@ -516,6 +935,7 @@ function handleBoardPointer(e) {
   if (isBoardFull()) {
     gameOver = true;
     setStatus("平局。", "win");
+    updateHero();
     updateButtons();
     return;
   }
@@ -523,13 +943,8 @@ function handleBoardPointer(e) {
   currentPlayer = AI;
   updateStatus();
 
-  setTimeout(normalAIMove, 50);
+  setTimeout(normalAIMove, 45);
 }
-
-
-/* =========================================================
-   Worker AI
-   ========================================================= */
 
 function boardToFlat() {
   const flat = new Int8Array(SIZE * SIZE);
@@ -573,12 +988,9 @@ function handleWorkerMessage(event) {
   if (data.type === "ready") {
     aiReady = true;
 
-    modelInfoEl.textContent =
-      "AI 加载成功 · " +
-      data.model +
-      " · ORT Web " +
-      data.ortVersion +
-      " · WASM 单线程 · Adaptive MCTS 50/100/150";
+    heroTitleEl.textContent = "AI 已就绪";
+    heroDescEl.textContent =
+      "UINT8 · WASM · Adaptive MCTS 50/100/150";
 
     updateStatus();
     updateButtons();
@@ -586,12 +998,11 @@ function handleWorkerMessage(event) {
   }
 
   if (data.type === "progress") {
-    if (
-      !aiThinking ||
-      data.searchId !== pendingSearchId
-    ) {
+    if (!aiThinking || data.searchId !== pendingSearchId) {
       return;
     }
+
+    simsMetricEl.textContent = String(data.simulations);
 
     setStatus(
       "AI 思考中 · 已搜索 " + data.simulations + " 次",
@@ -601,10 +1012,7 @@ function handleWorkerMessage(event) {
   }
 
   if (data.type === "result") {
-    if (
-      !aiThinking ||
-      data.searchId !== pendingSearchId
-    ) {
+    if (!aiThinking || data.searchId !== pendingSearchId) {
       return;
     }
 
@@ -616,22 +1024,23 @@ function handleWorkerMessage(event) {
         ? data.rootValue
         : null;
 
+    updateMetrics(data);
+
     if (!placeMove(x, y, AI, data.source || "adaptive-mcts")) {
       aiThinking = false;
       currentPlayer = HUMAN;
       setStatus("AI 返回了非法落子", "error");
+      updateHero();
       updateButtons();
       return;
     }
-
-    console.log("AI move", data);
 
     if (checkWin(x, y, AI)) {
       gameOver = true;
       aiThinking = false;
 
       setStatus(
-        "AI 获胜！ · " +
+        "AI 获胜 · " +
         data.simulations +
         " sims · " +
         data.elapsedMs.toFixed(0) +
@@ -639,12 +1048,9 @@ function handleWorkerMessage(event) {
         "win"
       );
 
-      modelInfoEl.textContent =
-        "最后一步：" +
-        data.stopReason +
-        " · NN=" + data.nnEvals +
-        " · Value=" +
-        (lastAIValue === null ? "n/a" : lastAIValue.toFixed(4));
+      heroTitleEl.textContent = "AI 完成本局";
+      heroDescEl.textContent =
+        data.stopReason || "搜索结束";
 
       updateButtons();
       return;
@@ -654,6 +1060,7 @@ function handleWorkerMessage(event) {
       gameOver = true;
       aiThinking = false;
       setStatus("平局。", "win");
+      updateHero();
       updateButtons();
       return;
     }
@@ -661,22 +1068,9 @@ function handleWorkerMessage(event) {
     currentPlayer = HUMAN;
     aiThinking = false;
 
-    const valueText =
-      lastAIValue === null
-        ? "n/a"
-        : lastAIValue.toFixed(4);
-
-    modelInfoEl.textContent =
-      "本步：" +
-      data.simulations +
-      " sims · " +
-      data.elapsedMs.toFixed(0) +
-      " ms · " +
-      data.stopReason +
-      " · NN=" +
-      data.nnEvals +
-      " · Value=" +
-      valueText;
+    heroTitleEl.textContent = "轮到你了";
+    heroDescEl.textContent =
+      data.stopReason || "你执黑棋 · AI 执白棋";
 
     updateStatus();
     updateButtons();
@@ -697,17 +1091,13 @@ function handleWorkerMessage(event) {
     aiReady = false;
 
     setStatus("AI 推理失败", "error");
-    modelInfoEl.textContent =
-      "错误：" + (data.message || "未知错误");
+    heroTitleEl.textContent = "AI 推理失败";
+    heroDescEl.textContent =
+      data.message || "请检查模型与 Worker";
 
     updateButtons();
   }
 }
-
-
-/* =========================================================
-   胜负
-   ========================================================= */
 
 function checkWin(x, y, player) {
   const dirs = [
@@ -766,14 +1156,8 @@ function isBoardFull() {
       }
     }
   }
-
   return true;
 }
-
-
-/* =========================================================
-   悔棋
-   ========================================================= */
 
 function undoHumanAIPair() {
   if (aiThinking || history.length === 0) {
@@ -808,21 +1192,12 @@ function undoHumanAIPair() {
 
   currentPlayer = HUMAN;
   lastAIValue = null;
-
-  modelInfoEl.textContent =
-    aiReady
-      ? "UINT8 Adaptive MCTS 已加载 · 已悔棋"
-      : "准备加载 AI";
+  resetMetrics();
 
   drawBoard();
   updateStatus();
   updateButtons();
 }
-
-
-/* =========================================================
-   事件
-   ========================================================= */
 
 canvas.addEventListener("pointerdown", handleBoardPointer);
 window.addEventListener("resize", resizeCanvas);
@@ -838,19 +1213,9 @@ reloadBtn.addEventListener("click", () => {
 
 restartBtn.addEventListener("click", () => {
   initGame();
-  if (aiReady) {
-    modelInfoEl.textContent =
-      "UINT8 Adaptive MCTS 已加载 · 新棋局";
-  }
 });
 
-
-/* =========================================================
-   启动
-   ========================================================= */
-
 initApp();
-
 </script>
 </body>
 </html>
