@@ -4,17 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-
-  <title>Gomoku AI · MCTS</title>
-
-  <!-- WebGL-only：不使用 WASM -->
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgl.min.js"></script>
+  <title>五子棋 AI · UINT8 Adaptive MCTS</title>
 
   <style>
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
     html, body {
       margin: 0;
@@ -24,42 +17,39 @@
       color: #222;
     }
 
-    body {
-      display: flex;
-      justify-content: center;
-    }
+    body { display: flex; justify-content: center; }
 
     .app {
       width: 100%;
       max-width: 640px;
-      padding: 10px 10px 22px;
+      padding: 12px 10px 22px;
     }
 
     h1 {
-      margin: 3px 0;
+      margin: 4px 0;
       text-align: center;
-      font-size: 23px;
+      font-size: 24px;
     }
 
     .subtitle {
       text-align: center;
       color: #777;
-      font-size: 12px;
-      margin-bottom: 8px;
+      font-size: 13px;
+      margin-bottom: 10px;
     }
 
     .panel {
       background: #fff;
       border-radius: 12px;
-      padding: 9px 11px;
-      margin-bottom: 9px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
       box-shadow: 0 2px 10px rgba(0,0,0,.06);
     }
 
     .status {
       min-height: 24px;
       text-align: center;
-      font-size: 16px;
+      font-size: 17px;
       font-weight: 700;
       line-height: 24px;
     }
@@ -70,30 +60,12 @@
     .win     { color: #d84315; }
 
     .model-info {
-      margin-top: 5px;
+      margin-top: 6px;
       text-align: center;
       color: #666;
-      font-size: 11px;
-      line-height: 1.45;
+      font-size: 12px;
+      line-height: 1.5;
       word-break: break-word;
-    }
-
-    .controls {
-      margin-top: 7px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 7px;
-      font-size: 12px;
-      color: #555;
-    }
-
-    select {
-      border: 1px solid #ccc;
-      border-radius: 7px;
-      background: #fff;
-      padding: 5px 8px;
-      font-size: 12px;
     }
 
     .board-wrap {
@@ -117,16 +89,16 @@
     .buttons {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin-top: 11px;
+      gap: 9px;
+      margin-top: 12px;
     }
 
     button {
       border: none;
       border-radius: 9px;
-      padding: 11px 7px;
-      min-height: 43px;
-      font-size: 14px;
+      padding: 12px 8px;
+      min-height: 44px;
+      font-size: 15px;
       font-weight: 600;
       cursor: pointer;
     }
@@ -144,15 +116,15 @@
       display: flex;
       justify-content: center;
       gap: 18px;
-      margin-top: 9px;
-      font-size: 12px;
+      margin-top: 10px;
+      font-size: 13px;
       color: #555;
     }
 
     .dot {
       display: inline-block;
-      width: 12px;
-      height: 12px;
+      width: 13px;
+      height: 13px;
       border-radius: 50%;
       vertical-align: -2px;
       margin-right: 4px;
@@ -163,56 +135,33 @@
     .dot.white { background: #fff; }
 
     .tips {
-      margin-top: 8px;
-      font-size: 11px;
-      line-height: 1.5;
+      margin-top: 10px;
+      font-size: 12px;
+      line-height: 1.55;
       color: #777;
       text-align: center;
     }
 
     @media (max-width: 420px) {
-      .app {
-        padding-left: 7px;
-        padding-right: 7px;
-      }
-
-      h1 { font-size: 21px; }
-      .status { font-size: 15px; }
-      button { font-size: 13px; }
+      .app { padding-left: 8px; padding-right: 8px; }
+      h1 { font-size: 22px; }
+      .status { font-size: 16px; }
+      button { font-size: 14px; }
     }
   </style>
 </head>
 
 <body>
-
 <div class="app">
 
   <h1>五子棋 AI</h1>
-
-  <div class="subtitle">
-    ONNX Policy-Value Network · WebGL · MCTS
-  </div>
+  <div class="subtitle">UINT8 · WASM · Adaptive MCTS 50/100/150 · 15 × 15</div>
 
   <div class="panel">
-
-    <div id="status" class="status loading">
-      正在加载 AI...
-    </div>
-
+    <div id="status" class="status loading">正在加载 AI...</div>
     <div id="modelInfo" class="model-info">
-      模型：gomoku_single.onnx
+      准备加载 147 KB UINT8 模型 · Web Worker · WASM
     </div>
-
-    <div class="controls">
-      <label for="simSelect">MCTS强度：</label>
-
-      <select id="simSelect">
-        <option value="50">快速 · 50次</option>
-        <option value="100" selected>标准 · 100次</option>
-        <option value="200">高强度 · 200次</option>
-      </select>
-    </div>
-
   </div>
 
   <div class="board-wrap">
@@ -231,197 +180,88 @@
   </div>
 
   <div class="tips">
-    AI = Policy + Value + MCTS。默认100次；手机较慢可选50次，电脑可选200次。<br>
-    下一阶段再把 C++ VCT 接到 MCTS 前面。
+    AI：一步必赢/必堵 → 自适应 MCTS 50/100/150。<br>
+    简单局面少搜索，困难局面自动增加搜索；计算在 Worker 中进行，不阻塞棋盘界面。
   </div>
 
 </div>
-
 
 <script>
 "use strict";
 
 /* =========================================================
-   常量
+   基本设置
    ========================================================= */
 
 const SIZE = 15;
-const CELLS = SIZE * SIZE;
-
 const EMPTY = 0;
 const HUMAN = 1;
 const AI = 2;
 
-const MODEL_URL = "./gomoku_single.onnx";
+const AI_WORKER_URL = "./ai-worker.js?v=u8-adaptive-20260910-1";
 
-/*
-  尽量贴近原 Python GUI 的搜索设置：
-  Model(... c_puct=1)
-  use_rand=0.01
-  puct2=0
-*/
-const C_PUCT = 1.0;
-const PUCT2 = 0.0;
-const PRIOR_NOISE_SIGMA = 0.01;
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
 
+const statusEl = document.getElementById("status");
+const modelInfoEl = document.getElementById("modelInfo");
 
-/* =========================================================
-   DOM
-   ========================================================= */
-
-const canvas =
-  document.getElementById("board");
-
-const ctx =
-  canvas.getContext("2d");
-
-const statusEl =
-  document.getElementById("status");
-
-const modelInfoEl =
-  document.getElementById("modelInfo");
-
-const undoBtn =
-  document.getElementById("undoBtn");
-
-const reloadBtn =
-  document.getElementById("reloadBtn");
-
-const restartBtn =
-  document.getElementById("restartBtn");
-
-const simSelect =
-  document.getElementById("simSelect");
-
-
-/* =========================================================
-   游戏状态
-   ========================================================= */
+const undoBtn = document.getElementById("undoBtn");
+const reloadBtn = document.getElementById("reloadBtn");
+const restartBtn = document.getElementById("restartBtn");
 
 let board = [];
 let history = [];
 
 let currentPlayer = HUMAN;
-
 let gameOver = false;
 let aiThinking = false;
-
 let lastMove = null;
 
-
-/* =========================================================
-   AI状态
-   ========================================================= */
-
-let aiSession = null;
+let aiWorker = null;
 let aiReady = false;
-
 let lastAIValue = null;
-let lastSearchMs = null;
-
-let warmupPromise = null;
+let pendingSearchId = 0;
 
 
 /* =========================================================
    UI
    ========================================================= */
 
-function setStatus(
-  text,
-  cls = ""
-) {
-
-  statusEl.textContent =
-    text;
-
-  statusEl.className =
-    "status";
-
-  if (cls) {
-    statusEl.classList.add(cls);
-  }
+function setStatus(text, cls = "") {
+  statusEl.textContent = text;
+  statusEl.className = "status";
+  if (cls) statusEl.classList.add(cls);
 }
 
-
 function updateStatus() {
-
-  if (gameOver) {
-    return;
-  }
+  if (gameOver) return;
 
   if (!aiReady) {
-
-    setStatus(
-      "正在加载 AI...",
-      "loading"
-    );
-
+    setStatus("正在等待 AI 模型...", "loading");
     return;
   }
 
   if (aiThinking) {
-
-    setStatus(
-      "AI 思考中...",
-      "ai"
-    );
-
+    setStatus("AI 思考中...", "ai");
     return;
   }
 
-  if (
-    currentPlayer === HUMAN
-  ) {
-
-    let text =
-      "轮到你：黑棋 ●";
-
-    if (
-      lastAIValue !== null
-    ) {
-
-      text +=
-        " | Value " +
-        lastAIValue.toFixed(3);
+  if (currentPlayer === HUMAN) {
+    let text = "轮到你：黑棋 ●";
+    if (lastAIValue !== null) {
+      text += " | AI Value = " + lastAIValue.toFixed(3);
     }
-
-    if (
-      lastSearchMs !== null
-    ) {
-
-      text +=
-        " | " +
-        (lastSearchMs / 1000)
-          .toFixed(2) +
-        "s";
-    }
-
     setStatus(text);
-
   } else {
-
-    setStatus(
-      "轮到 AI：白棋 ○",
-      "ai"
-    );
+    setStatus("轮到 AI：白棋 ○", "ai");
   }
 }
 
-
 function updateButtons() {
-
-  undoBtn.disabled =
-    aiThinking ||
-    history.length === 0;
-
-  reloadBtn.disabled =
-    aiThinking;
-
-  restartBtn.disabled =
-    aiThinking;
-
-  simSelect.disabled =
-    aiThinking;
+  undoBtn.disabled = aiThinking || history.length === 0;
+  reloadBtn.disabled = aiThinking;
+  restartBtn.disabled = aiThinking;
 }
 
 
@@ -430,286 +270,100 @@ function updateButtons() {
    ========================================================= */
 
 function initGame() {
-
-  board =
-    Array.from(
-      { length: SIZE },
-      () =>
-        Array(SIZE).fill(EMPTY)
-    );
+  board = Array.from(
+    { length: SIZE },
+    () => Array(SIZE).fill(EMPTY)
+  );
 
   history = [];
-
-  currentPlayer =
-    HUMAN;
-
-  gameOver =
-    false;
-
-  aiThinking =
-    false;
-
-  lastMove =
-    null;
-
-  lastAIValue =
-    null;
-
-  lastSearchMs =
-    null;
+  currentPlayer = HUMAN;
+  gameOver = false;
+  aiThinking = false;
+  lastMove = null;
+  lastAIValue = null;
+  pendingSearchId++;
 
   resizeCanvas();
   updateStatus();
   updateButtons();
 }
 
+function destroyAIWorker() {
+  if (aiWorker) {
+    aiWorker.terminate();
+    aiWorker = null;
+  }
+  aiReady = false;
+}
 
-/*
-  加载优化：
+function loadAIWorker() {
+  destroyAIWorker();
 
-  1. 不再先 fetch 一遍模型。
-  2. 不加 ?v=随机数。
-  3. 不使用 cache:no-store。
-  4. 浏览器可正常缓存 ONNX。
-  5. Session 建好后后台预热，不阻塞“可以下棋”的状态。
-*/
-async function loadAIModel() {
-
-  aiReady =
-    false;
-
-  aiSession =
-    null;
-
-  warmupPromise =
-    null;
-
-  setStatus(
-    "首次加载 AI 模型...",
-    "loading"
-  );
-
+  setStatus("正在加载 147 KB UINT8 AI...", "loading");
   modelInfoEl.textContent =
-    "模型：gomoku_single.onnx · WebGL";
+    "UINT8 QOperator · WASM · Worker · 正在建立推理会话";
 
-  updateButtons();
+  const worker = new Worker(AI_WORKER_URL);
+  aiWorker = worker;
 
-  try {
+  worker.onmessage = handleWorkerMessage;
 
-    const t0 =
-      performance.now();
+  worker.onerror = (event) => {
+    console.error("AI worker error:", event);
+    if (worker !== aiWorker) return;
 
-    aiSession =
-      await ort.InferenceSession.create(
-        MODEL_URL,
-        {
-          executionProviders:
-            ["webgl"]
-        }
-      );
-
-    const loadMs =
-      performance.now() - t0;
-
-    aiReady =
-      true;
-
+    aiReady = false;
+    aiThinking = false;
+    setStatus("AI Worker 加载失败", "error");
     modelInfoEl.textContent =
-      "AI 已加载 · WebGL" +
-      " · " +
-      (loadMs / 1000)
-        .toFixed(2) +
-      "s" +
-      " · 后台预热中";
-
-    updateStatus();
+      "Worker 错误：" + (event.message || "未知错误");
     updateButtons();
+  };
 
-    /*
-      不等待预热。
-      用户开始观察棋盘/下第一步时，
-      WebGL Shader 已经在后台编译。
-    */
-    warmupPromise =
-      warmupModel()
-        .then(() => {
-
-          if (
-            aiReady &&
-            !aiThinking
-          ) {
-
-            modelInfoEl.textContent =
-              "AI 已就绪 · WebGL · MCTS";
-
-            updateStatus();
-          }
-
-        })
-        .catch(err => {
-
-          console.warn(
-            "Warmup failed:",
-            err
-          );
-
-        });
-
-  } catch (err) {
-
-    console.error(
-      "AI load error:",
-      err
-    );
-
-    aiReady =
-      false;
-
-    aiSession =
-      null;
-
-    setStatus(
-      "AI 模型加载失败",
-      "error"
-    );
-
-    modelInfoEl.textContent =
-      "加载错误：" +
-      (
-        err &&
-        err.message
-          ? err.message
-          : String(err)
-      );
-
-    updateButtons();
-  }
+  worker.postMessage({ type: "init" });
 }
 
-
-async function warmupModel() {
-
-  if (!aiSession) {
-    return;
-  }
-
-  const emptyBoard =
-    new Int8Array(CELLS);
-
-  await inferPerspective(
-    emptyBoard
-  );
-}
-
-
-async function initApp() {
-
+function initApp() {
   initGame();
-
-  await loadAIModel();
+  loadAIWorker();
 }
 
 
 /* =========================================================
-   Canvas
+   Canvas 绘制
    ========================================================= */
 
 function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  const cssSize = rect.width;
+  const dpr = window.devicePixelRatio || 1;
 
-  const rect =
-    canvas.getBoundingClientRect();
+  canvas.width = Math.round(cssSize * dpr);
+  canvas.height = Math.round(cssSize * dpr);
 
-  const cssSize =
-    rect.width;
-
-  const dpr =
-    window.devicePixelRatio ||
-    1;
-
-  canvas.width =
-    Math.round(
-      cssSize * dpr
-    );
-
-  canvas.height =
-    Math.round(
-      cssSize * dpr
-    );
-
-  ctx.setTransform(
-    dpr, 0,
-    0, dpr,
-    0, 0
-  );
-
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawBoard();
 }
 
-
 function getBoardGeometry() {
-
-  const w =
-    canvas.clientWidth;
-
-  const margin =
-    w * 0.055;
-
-  const gap =
-    (
-      w -
-      margin * 2
-    ) /
-    (SIZE - 1);
-
-  return {
-    w,
-    margin,
-    gap
-  };
+  const w = canvas.clientWidth;
+  const margin = w * 0.055;
+  const gap = (w - 2 * margin) / (SIZE - 1);
+  return { w, margin, gap };
 }
 
-
 function drawBoard() {
+  const { w, margin, gap } = getBoardGeometry();
 
-  const {
-    w,
-    margin,
-    gap
-  } =
-    getBoardGeometry();
+  ctx.clearRect(0, 0, w, w);
+  ctx.fillStyle = "#d2a05b";
+  ctx.fillRect(0, 0, w, w);
 
-  ctx.clearRect(
-    0,
-    0,
-    w,
-    w
-  );
+  ctx.strokeStyle = "#303030";
+  ctx.lineWidth = 1;
 
-  ctx.fillStyle =
-    "#d2a05b";
-
-  ctx.fillRect(
-    0,
-    0,
-    w,
-    w
-  );
-
-  ctx.strokeStyle =
-    "#303030";
-
-  ctx.lineWidth =
-    1;
-
-  for (
-    let i = 0;
-    i < SIZE;
-    i++
-  ) {
-
-    const p =
-      margin +
-      i * gap;
+  for (let i = 0; i < SIZE; i++) {
+    const p = margin + i * gap;
 
     ctx.beginPath();
     ctx.moveTo(margin, p);
@@ -722,120 +376,52 @@ function drawBoard() {
     ctx.stroke();
   }
 
-
   const stars = [
-    [3,3],
-    [11,3],
-    [7,7],
-    [3,11],
-    [11,11]
+    [3,3], [11,3], [7,7], [3,11], [11,11]
   ];
 
-  ctx.fillStyle =
-    "#222";
+  ctx.fillStyle = "#222";
 
-  for (
-    const [x, y]
-    of stars
-  ) {
-
+  for (const [x, y] of stars) {
     ctx.beginPath();
-
     ctx.arc(
       margin + x * gap,
       margin + y * gap,
-      Math.max(
-        2.6,
-        gap * 0.08
-      ),
+      Math.max(2.6, gap * 0.08),
       0,
       Math.PI * 2
     );
-
     ctx.fill();
   }
 
-
-  for (
-    let y = 0;
-    y < SIZE;
-    y++
-  ) {
-
-    for (
-      let x = 0;
-      x < SIZE;
-      x++
-    ) {
-
-      if (
-        board[y][x] !==
-        EMPTY
-      ) {
-
-        drawStone(
-          x,
-          y,
-          board[y][x],
-          margin,
-          gap
-        );
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      if (board[y][x] !== EMPTY) {
+        drawStone(x, y, board[y][x], margin, gap);
       }
     }
   }
 
+  if (lastMove) {
+    const cx = margin + lastMove.x * gap;
+    const cy = margin + lastMove.y * gap;
 
-  if (
-    lastMove
-  ) {
-
-    const cx =
-      margin +
-      lastMove.x * gap;
-
-    const cy =
-      margin +
-      lastMove.y * gap;
-
-    ctx.fillStyle =
-      "#e53935";
-
+    ctx.fillStyle = "#e53935";
     ctx.beginPath();
-
     ctx.arc(
-      cx,
-      cy,
-      Math.max(
-        2.4,
-        gap * 0.08
-      ),
+      cx, cy,
+      Math.max(2.4, gap * 0.08),
       0,
       Math.PI * 2
     );
-
     ctx.fill();
   }
 }
 
-
-function drawStone(
-  x,
-  y,
-  color,
-  margin,
-  gap
-) {
-
-  const cx =
-    margin +
-    x * gap;
-
-  const cy =
-    margin +
-    y * gap;
-
-  const r =
-    gap * 0.43;
+function drawStone(x, y, color, margin, gap) {
+  const cx = margin + x * gap;
+  const cy = margin + y * gap;
+  const r = gap * 0.43;
 
   const gradient =
     ctx.createRadialGradient(
@@ -847,1668 +433,272 @@ function drawStone(
       r
     );
 
-  if (
-    color === HUMAN
-  ) {
-
-    gradient.addColorStop(
-      0,
-      "#777"
-    );
-
-    gradient.addColorStop(
-      0.35,
-      "#333"
-    );
-
-    gradient.addColorStop(
-      1,
-      "#050505"
-    );
-
+  if (color === HUMAN) {
+    gradient.addColorStop(0, "#777");
+    gradient.addColorStop(0.35, "#333");
+    gradient.addColorStop(1, "#050505");
   } else {
-
-    gradient.addColorStop(
-      0,
-      "#fff"
-    );
-
-    gradient.addColorStop(
-      0.55,
-      "#f5f5f5"
-    );
-
-    gradient.addColorStop(
-      1,
-      "#c9c9c9"
-    );
+    gradient.addColorStop(0, "#fff");
+    gradient.addColorStop(0.55, "#f5f5f5");
+    gradient.addColorStop(1, "#c9c9c9");
   }
 
   ctx.beginPath();
-
-  ctx.arc(
-    cx,
-    cy,
-    r,
-    0,
-    Math.PI * 2
-  );
-
-  ctx.fillStyle =
-    gradient;
-
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = gradient;
   ctx.fill();
 
-  ctx.strokeStyle =
-    color === HUMAN
-      ? "#000"
-      : "#777";
-
-  ctx.lineWidth =
-    1;
-
+  ctx.strokeStyle = color === HUMAN ? "#000" : "#777";
+  ctx.lineWidth = 1;
   ctx.stroke();
 }
 
 
 /* =========================================================
-   游戏落子
+   落子
    ========================================================= */
 
-function placeMove(
-  x,
-  y,
-  color,
-  source
-) {
-
-  if (
-    x < 0 ||
-    x >= SIZE ||
-    y < 0 ||
-    y >= SIZE
-  ) {
+function placeMove(x, y, color, source) {
+  if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) {
     return false;
   }
 
-  if (
-    board[y][x] !==
-    EMPTY
-  ) {
+  if (board[y][x] !== EMPTY) {
     return false;
   }
 
-  board[y][x] =
-    color;
+  board[y][x] = color;
 
-  history.push({
-    x,
-    y,
-    color,
-    source
-  });
-
-  lastMove = {
-    x,
-    y
-  };
+  history.push({ x, y, color, source });
+  lastMove = { x, y };
 
   drawBoard();
   updateButtons();
-
   return true;
 }
-
 
 function handleBoardPointer(e) {
-
   if (!aiReady) {
-
-    setStatus(
-      "AI 尚未加载完成",
-      "loading"
-    );
-
+    setStatus("AI 模型尚未加载完成", "loading");
     return;
   }
 
-  if (
-    gameOver ||
-    aiThinking ||
-    currentPlayer !== HUMAN
-  ) {
+  if (gameOver || aiThinking || currentPlayer !== HUMAN) {
     return;
   }
 
-  const rect =
-    canvas.getBoundingClientRect();
+  const rect = canvas.getBoundingClientRect();
+  const { margin, gap } = getBoardGeometry();
 
-  const {
-    margin,
-    gap
-  } =
-    getBoardGeometry();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
 
-  const px =
-    e.clientX -
-    rect.left;
+  const x = Math.round((px - margin) / gap);
+  const y = Math.round((py - margin) / gap);
 
-  const py =
-    e.clientY -
-    rect.top;
-
-  const x =
-    Math.round(
-      (px - margin) /
-      gap
-    );
-
-  const y =
-    Math.round(
-      (py - margin) /
-      gap
-    );
-
-  if (
-    x < 0 ||
-    x >= SIZE ||
-    y < 0 ||
-    y >= SIZE
-  ) {
+  if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) {
     return;
   }
 
-  if (
-    board[y][x] !==
-    EMPTY
-  ) {
+  if (board[y][x] !== EMPTY) {
     return;
   }
 
-  placeMove(
-    x,
-    y,
-    HUMAN,
-    "human"
-  );
+  placeMove(x, y, HUMAN, "human");
 
-  if (
-    checkAbsoluteWin(
-      x,
-      y,
-      HUMAN
-    )
-  ) {
-
-    gameOver =
-      true;
-
-    setStatus(
-      "你获胜了！",
-      "win"
-    );
-
+  if (checkWin(x, y, HUMAN)) {
+    gameOver = true;
+    setStatus("你获胜了！", "win");
     updateButtons();
-
     return;
   }
 
-  if (
-    isAbsoluteBoardFull()
-  ) {
-
-    gameOver =
-      true;
-
-    setStatus(
-      "平局。",
-      "win"
-    );
-
+  if (isBoardFull()) {
+    gameOver = true;
+    setStatus("平局。", "win");
     updateButtons();
-
     return;
   }
 
-  currentPlayer =
-    AI;
-
+  currentPlayer = AI;
   updateStatus();
 
-  setTimeout(
-    normalAIMove,
-    50
-  );
+  setTimeout(normalAIMove, 50);
 }
 
 
 /* =========================================================
-   棋盘视角转换
+   Worker AI
    ========================================================= */
 
-/*
-  原 Python MCTS 的核心约定：
+function boardToFlat() {
+  const flat = new Int8Array(SIZE * SIZE);
 
-  每个搜索节点中：
-    +1 = 当前要走棋的一方
-    -1 = 对手
-     0 = 空
-
-  AI 是白棋，所以根节点：
-    白棋 -> +1
-    黑棋 -> -1
-*/
-function absoluteToPerspective(
-  player
-) {
-
-  const result =
-    new Int8Array(CELLS);
-
-  const opponent =
-    player === HUMAN
-      ? AI
-      : HUMAN;
-
-  for (
-    let y = 0;
-    y < SIZE;
-    y++
-  ) {
-
-    for (
-      let x = 0;
-      x < SIZE;
-      x++
-    ) {
-
-      const idx =
-        y * SIZE + x;
-
-      const p =
-        board[y][x];
-
-      if (
-        p === player
-      ) {
-
-        result[idx] =
-          1;
-
-      } else if (
-        p === opponent
-      ) {
-
-        result[idx] =
-          -1;
-
-      } else {
-
-        result[idx] =
-          0;
-      }
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      flat[y * SIZE + x] = board[y][x];
     }
   }
 
-  return result;
+  return flat;
 }
 
-
-/*
-  父节点当前玩家走一步：
-      move = +1
-
-  下一节点换对手执棋，
-  所以整个棋盘乘 -1。
-
-  与原 Python select_child 中完全一致。
-*/
-function makeChildBoard(
-  parentBoard,
-  moveIndex
-) {
-
-  const next =
-    parentBoard.slice();
-
-  next[moveIndex] =
-    1;
-
-  for (
-    let i = 0;
-    i < CELLS;
-    i++
-  ) {
-
-    next[i] =
-      -next[i];
-  }
-
-  return next;
-}
-
-
-/* =========================================================
-   ONNX推理
-   ========================================================= */
-
-function perspectiveToTensor(
-  perspectiveBoard
-) {
-
-  const data =
-    new Float32Array(
-      3 * CELLS
-    );
-
-  for (
-    let i = 0;
-    i < CELLS;
-    i++
-  ) {
-
-    const p =
-      perspectiveBoard[i];
-
-    if (
-      p === 1
-    ) {
-
-      data[i] =
-        1.0;
-
-    } else if (
-      p === -1
-    ) {
-
-      data[
-        CELLS + i
-      ] =
-        1.0;
-
-    } else {
-
-      data[
-        2 * CELLS + i
-      ] =
-        1.0;
-    }
-  }
-
-  return new ort.Tensor(
-    "float32",
-    data,
-    [1, 3, SIZE, SIZE]
-  );
-}
-
-
-async function inferPerspective(
-  perspectiveBoard
-) {
-
-  if (!aiSession) {
-    throw new Error(
-      "AI Session 尚未建立"
-    );
-  }
-
-  const input =
-    perspectiveToTensor(
-      perspectiveBoard
-    );
-
-  const inputName =
-    aiSession.inputNames
-      .includes("board")
-      ? "board"
-      : aiSession.inputNames[0];
-
-  const feeds = {};
-
-  feeds[inputName] =
-    input;
-
-  const results =
-    await aiSession.run(
-      feeds
-    );
-
-  const valueTensor =
-    results.value ||
-    results[
-      aiSession.outputNames[0]
-    ];
-
-  const policyTensor =
-    results.policy ||
-    results[
-      aiSession.outputNames[1]
-    ];
-
-  if (
-    !valueTensor ||
-    !policyTensor
-  ) {
-
-    throw new Error(
-      "找不到 value / policy 输出"
-    );
-  }
-
-  return {
-    value:
-      Number(
-        valueTensor.data[0]
-      ),
-
-    policy:
-      policyTensor.data
-  };
-}
-
-
-/* =========================================================
-   MCTS节点
-   ========================================================= */
-
-class MCTSNode {
-
-  constructor(
-    perspectiveBoard,
-    parent = null,
-    move = -1
-  ) {
-
-    this.board =
-      perspectiveBoard;
-
-    this.parent =
-      parent;
-
-    this.move =
-      move;
-
-    /*
-      moveIndex -> {
-        node: MCTSNode | null,
-        prior: number
-      }
-    */
-    this.children =
-      new Map();
-
-    this.visitCount =
-      0;
-
-    this.valueSum =
-      0;
-
-    this.val =
-      0;
-
-    this.value =
-      null;
-  }
-
-
-  updateValue() {
-
-    if (
-      this.children.size === 0
-    ) {
-
-      this.val =
-        this.value ?? 0;
-
-    } else {
-
-      /*
-        原 Python Config.mcts_type = 'mean'
-      */
-      this.val =
-        this.visitCount > 0
-          ? this.valueSum /
-            this.visitCount
-          : 0;
-    }
-  }
-}
-
-
-/* =========================================================
-   MCTS工具
-   ========================================================= */
-
-function gaussianNoise(
-  sigma
-) {
-
-  if (
-    sigma <= 0
-  ) {
-    return 0;
-  }
-
-  let u = 0;
-  let v = 0;
-
-  while (
-    u === 0
-  ) {
-    u =
-      Math.random();
-  }
-
-  while (
-    v === 0
-  ) {
-    v =
-      Math.random();
-  }
-
-  const z =
-    Math.sqrt(
-      -2.0 *
-      Math.log(u)
-    ) *
-    Math.cos(
-      2.0 *
-      Math.PI *
-      v
-    );
-
-  return z * sigma;
-}
-
-
-function perspectiveBoardFull(
-  b
-) {
-
-  for (
-    let i = 0;
-    i < CELLS;
-    i++
-  ) {
-
-    if (
-      b[i] === 0
-    ) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-
-/*
-  与 Python evaluation_func 的思想一致：
-  +1 五连 -> 正值
-  -1 五连 -> 负值
-*/
-function evaluatePerspectiveBoard(
-  b
-) {
-
-  let numUsed =
-    0;
-
-  for (
-    let i = 0;
-    i < CELLS;
-    i++
-  ) {
-
-    if (
-      b[i] !== 0
-    ) {
-
-      numUsed++;
-    }
-  }
-
-  const dirs = [
-    [1, 0],
-    [0, 1],
-    [1, 1],
-    [1, -1]
-  ];
-
-  for (
-    let y = 0;
-    y < SIZE;
-    y++
-  ) {
-
-    for (
-      let x = 0;
-      x < SIZE;
-      x++
-    ) {
-
-      const idx =
-        y * SIZE + x;
-
-      const stone =
-        b[idx];
-
-      if (
-        stone === 0
-      ) {
-        continue;
-      }
-
-      for (
-        const [dx, dy]
-        of dirs
-      ) {
-
-        let count =
-          0;
-
-        for (
-          let d = 0;
-          d < 5;
-          d++
-        ) {
-
-          const nx =
-            x + dx * d;
-
-          const ny =
-            y + dy * d;
-
-          if (
-            nx < 0 ||
-            nx >= SIZE ||
-            ny < 0 ||
-            ny >= SIZE
-          ) {
-            break;
-          }
-
-          const ni =
-            ny * SIZE + nx;
-
-          if (
-            b[ni] ===
-            stone
-          ) {
-
-            count++;
-
-          } else {
-
-            break;
-          }
-        }
-
-        if (
-          count === 5
-        ) {
-
-          const val =
-            1 -
-            numUsed *
-            3e-4;
-
-          return stone === 1
-            ? val
-            : -val;
-        }
-      }
-    }
-  }
-
-  return 0;
-}
-
-
-function isTerminalNode(
-  node
-) {
-
-  if (
-    perspectiveBoardFull(
-      node.board
-    )
-  ) {
-    return true;
-  }
-
-  return (
-    evaluatePerspectiveBoard(
-      node.board
-    ) !== 0
-  );
-}
-
-
-function evaluateNode(
-  node
-) {
-
-  if (
-    perspectiveBoardFull(
-      node.board
-    )
-  ) {
-    return 0;
-  }
-
-  const terminalValue =
-    evaluatePerspectiveBoard(
-      node.board
-    );
-
-  if (
-    terminalValue !== 0
-  ) {
-    return terminalValue;
-  }
-
-  return (
-    node.value !== null
-      ? node.value
-      : 0
-  );
-}
-
-
-/* =========================================================
-   MCTS选择
-   按原 Python 的 score = explore - exploit
-   ========================================================= */
-
-function selectChild(
-  node
-) {
-
-  let totalVisits =
-    0;
-
-  for (
-    const entry
-    of node.children.values()
-  ) {
-
-    if (
-      entry.node
-    ) {
-
-      totalVisits +=
-        entry.node
-          .visitCount;
-    }
-  }
-
-  const exploreBuff =
-    Math.sqrt(
-      totalVisits + 1
-    );
-
-  const logTotal =
-    Math.log(
-      totalVisits + 1
-    );
-
-
-  let exp1 =
-    0;
-
-  let exp2 =
-    0;
-
-  for (
-    const entry
-    of node.children.values()
-  ) {
-
-    if (
-      entry.node
-    ) {
-
-      exp1 +=
-        entry.node.val *
-        entry.node.visitCount;
-
-      exp2 +=
-        entry.node.visitCount;
-    }
-  }
-
-  const ave =
-    exp1 /
-    (exp2 + 1e-5);
-
-
-  let bestScore =
-    -1e100;
-
-  let bestMove =
-    -1;
-
-  let bestEntry =
-    null;
-
-
-  for (
-    const [move, entry]
-    of node.children.entries()
-  ) {
-
-    const child =
-      entry.node;
-
-    const prior =
-      entry.prior;
-
-    let explore =
-      C_PUCT *
-      prior *
-      exploreBuff;
-
-    let exploit =
-      ave;
-
-    if (
-      child &&
-      child.visitCount !== 0
-    ) {
-
-      exploit =
-        child.val;
-
-      explore /=
-        (
-          child.visitCount +
-          1
-        );
-    }
-
-    if (
-      PUCT2 !== 0
-    ) {
-
-      const childVisits =
-        child
-          ? child.visitCount
-          : 0;
-
-      explore +=
-        PUCT2 *
-        Math.sqrt(
-          logTotal /
-          (
-            childVisits +
-            1
-          )
-        );
-    }
-
-    const score =
-      explore -
-      exploit;
-
-    if (
-      score >
-      bestScore
-    ) {
-
-      bestScore =
-        score;
-
-      bestMove =
-        move;
-
-      bestEntry =
-        entry;
-    }
-  }
-
-
-  if (
-    bestMove < 0 ||
-    !bestEntry
-  ) {
-
-    throw new Error(
-      "MCTS selectChild 未找到走法"
-    );
-  }
-
-
-  if (
-    !bestEntry.node
-  ) {
-
-    bestEntry.node =
-      new MCTSNode(
-        makeChildBoard(
-          node.board,
-          bestMove
-        ),
-        node,
-        bestMove
-      );
-  }
-
-  return bestEntry.node;
-}
-
-
-/* =========================================================
-   MCTS扩展
-   ========================================================= */
-
-async function expandNode(
-  node
-) {
-
-  const result =
-    await inferPerspective(
-      node.board
-    );
-
-  node.value =
-    result.value;
-
-  const policy =
-    result.policy;
-
-
-  let legalPolicySum =
-    0;
-
-  for (
-    let i = 0;
-    i < CELLS;
-    i++
-  ) {
-
-    if (
-      node.board[i] === 0
-    ) {
-
-      legalPolicySum +=
-        Number(
-          policy[i]
-        );
-    }
-  }
-
-  if (
-    legalPolicySum === 0
-  ) {
-
-    legalPolicySum =
-      1e-10;
-  }
-
-
-  for (
-    let i = 0;
-    i < CELLS;
-    i++
-  ) {
-
-    if (
-      node.board[i] !== 0
-    ) {
-      continue;
-    }
-
-    const prior =
-      Number(
-        policy[i]
-      ) /
-      legalPolicySum +
-      gaussianNoise(
-        PRIOR_NOISE_SIGMA
-      );
-
-    node.children.set(
-      i,
-      {
-        node: null,
-        prior
-      }
-    );
-  }
-}
-
-
-/* =========================================================
-   MCTS主循环
-   ========================================================= */
-
-async function runMCTS(
-  rootBoard,
-  numSimulations
-) {
-
-  const root =
-    new MCTSNode(
-      rootBoard
-    );
-
-
-  for (
-    let sim = 0;
-    sim < numSimulations;
-    sim++
-  ) {
-
-    let node =
-      root;
-
-    const searchPath =
-      [node];
-
-
-    while (
-      node.children.size > 0
-    ) {
-
-      node =
-        selectChild(
-          node
-        );
-
-      searchPath.push(
-        node
-      );
-    }
-
-
-    if (
-      !isTerminalNode(
-        node
-      )
-    ) {
-
-      await expandNode(
-        node
-      );
-
-    } else {
-
-      node.value =
-        evaluateNode(
-          node
-        );
-    }
-
-
-    let value =
-      evaluateNode(
-        node
-      );
-
-
-    for (
-      let k =
-        searchPath.length - 1;
-      k >= 0;
-      k--
-    ) {
-
-      const n =
-        searchPath[k];
-
-      n.visitCount++;
-
-      n.valueSum +=
-        value;
-
-      n.updateValue();
-
-      value =
-        -value;
-    }
-
-
-    /*
-      每10次更新页面一次，
-      手机不会看起来“死机”。
-    */
-    if (
-      (sim + 1) % 10 === 0 ||
-      sim + 1 === numSimulations
-    ) {
-
-      setStatus(
-        "AI 思考中 " +
-        (sim + 1) +
-        "/" +
-        numSimulations,
-        "ai"
-      );
-
-      await new Promise(
-        resolve =>
-          requestAnimationFrame(
-            resolve
-          )
-      );
-    }
-  }
-
-
-  let totalVisits =
-    0;
-
-  for (
-    const entry
-    of root.children.values()
-  ) {
-
-    if (
-      entry.node
-    ) {
-
-      totalVisits +=
-        entry.node.visitCount;
-    }
-  }
-
-
-  let bestMove =
-    -1;
-
-  let bestVisits =
-    -1;
-
-  let secondMove =
-    -1;
-
-  let secondVisits =
-    -1;
-
-
-  for (
-    const [move, entry]
-    of root.children.entries()
-  ) {
-
-    if (
-      !entry.node
-    ) {
-      continue;
-    }
-
-    const visits =
-      entry.node.visitCount;
-
-    if (
-      visits >
-      bestVisits
-    ) {
-
-      secondMove =
-        bestMove;
-
-      secondVisits =
-        bestVisits;
-
-      bestMove =
-        move;
-
-      bestVisits =
-        visits;
-
-    } else if (
-      visits >
-      secondVisits
-    ) {
-
-      secondMove =
-        move;
-
-      secondVisits =
-        visits;
-    }
-  }
-
-
-  if (
-    bestMove < 0
-  ) {
-
-    /*
-      极端情况下只有1次simulation时，
-      root可能只被扩展而没有子节点访问。
-      用最高prior兜底。
-    */
-
-    let bestPrior =
-      -Infinity;
-
-    for (
-      const [move, entry]
-      of root.children.entries()
-    ) {
-
-      if (
-        entry.prior >
-        bestPrior
-      ) {
-
-        bestPrior =
-          entry.prior;
-
-        bestMove =
-          move;
-      }
-    }
-  }
-
-
-  const rootValue =
-    root.visitCount > 0
-      ? root.valueSum /
-        root.visitCount
-      : 0;
-
-
-  return {
-    move: bestMove,
-    rootValue,
-    bestVisits,
-    secondMove,
-    secondVisits,
-    totalVisits
-  };
-}
-
-
-/* =========================================================
-   一个很便宜的1步战术保护
-   ========================================================= */
-
-/*
-  在真正MCTS前先做：
-    1. AI有一步成五 -> 直接赢
-    2. 对手有一步成五 -> 必须堵
-
-  这不是VCT，只是防止明显的一步杀漏算。
-*/
-function findImmediateAbsoluteMove(
-  color
-) {
-
-  for (
-    let y = 0;
-    y < SIZE;
-    y++
-  ) {
-
-    for (
-      let x = 0;
-      x < SIZE;
-      x++
-    ) {
-
-      if (
-        board[y][x] !==
-        EMPTY
-      ) {
-        continue;
-      }
-
-      board[y][x] =
-        color;
-
-      const win =
-        checkAbsoluteWin(
-          x,
-          y,
-          color
-        );
-
-      board[y][x] =
-        EMPTY;
-
-      if (
-        win
-      ) {
-
-        return {
-          x,
-          y
-        };
-      }
-    }
-  }
-
-  return null;
-}
-
-
-/* =========================================================
-   AI回合
-   ========================================================= */
-
-async function normalAIMove() {
-
+function normalAIMove() {
   if (
     !aiReady ||
-    !aiSession ||
+    !aiWorker ||
     gameOver ||
     currentPlayer !== AI
   ) {
     return;
   }
 
-  aiThinking =
-    true;
-
+  aiThinking = true;
   updateStatus();
   updateButtons();
 
-
-  try {
-
-    /*
-      如果后台预热还没结束，
-      这里等待它即可。
-    */
-    if (
-      warmupPromise
-    ) {
-
-      try {
-        await warmupPromise;
-      } catch (_) {}
-    }
-
-
-    /*
-      先看能不能一步赢。
-    */
-    let tactical =
-      findImmediateAbsoluteMove(
-        AI
-      );
-
-    if (
-      tactical
-    ) {
-
-      placeMove(
-        tactical.x,
-        tactical.y,
-        AI,
-        "immediate-win"
-      );
-
-      aiThinking =
-        false;
-
-      if (
-        checkAbsoluteWin(
-          tactical.x,
-          tactical.y,
-          AI
-        )
-      ) {
-
-        gameOver =
-          true;
-
-        setStatus(
-          "AI 获胜！",
-          "win"
-        );
-
-      } else {
-
-        currentPlayer =
-          HUMAN;
-
-        updateStatus();
-      }
-
-      updateButtons();
-
-      return;
-    }
-
-
-    /*
-      再看是否必须堵对手一步成五。
-    */
-    tactical =
-      findImmediateAbsoluteMove(
-        HUMAN
-      );
-
-    if (
-      tactical
-    ) {
-
-      placeMove(
-        tactical.x,
-        tactical.y,
-        AI,
-        "immediate-block"
-      );
-
-      currentPlayer =
-        HUMAN;
-
-      aiThinking =
-        false;
-
-      modelInfoEl.textContent =
-        "AI：一步必防 · 已直接防守";
-
-      updateStatus();
-      updateButtons();
-
-      return;
-    }
-
-
-    const simulations =
-      Number(
-        simSelect.value
-      ) || 100;
-
-
-    const rootBoard =
-      absoluteToPerspective(
-        AI
-      );
-
-
-    setStatus(
-      "AI 思考中 0/" +
-      simulations,
-      "ai"
-    );
-
-
-    const t0 =
-      performance.now();
-
-
-    const result =
-      await runMCTS(
-        rootBoard,
-        simulations
-      );
-
-
-    const elapsed =
-      performance.now() -
-      t0;
-
-
-    if (
-      result.move < 0
-    ) {
-
-      throw new Error(
-        "MCTS 没有找到合法走法"
-      );
-    }
-
-
-    /*
-      perspective flatten:
-        index = row*15 + col
-      row = y
-      col = x
-    */
-    const x =
-      result.move %
-      SIZE;
-
-    const y =
-      Math.floor(
-        result.move /
-        SIZE
-      );
-
-
-    if (
-      board[y][x] !==
-      EMPTY
-    ) {
-
-      throw new Error(
-        "MCTS 返回了非空位置"
-      );
-    }
-
-
-    placeMove(
-      x,
-      y,
-      AI,
-      "mcts"
-    );
-
-
-    lastAIValue =
-      result.rootValue;
-
-    lastSearchMs =
-      elapsed;
-
-
-    if (
-      checkAbsoluteWin(
-        x,
-        y,
-        AI
-      )
-    ) {
-
-      gameOver =
-        true;
-
-      aiThinking =
-        false;
-
-      setStatus(
-        "AI 获胜！",
-        "win"
-      );
-
-      modelInfoEl.textContent =
-        "MCTS " +
-        simulations +
-        "次 · " +
-        (elapsed / 1000)
-          .toFixed(2) +
-        "s · Value " +
-        result.rootValue
-          .toFixed(3);
-
-      updateButtons();
-
-      return;
-    }
-
-
-    if (
-      isAbsoluteBoardFull()
-    ) {
-
-      gameOver =
-        true;
-
-      aiThinking =
-        false;
-
-      setStatus(
-        "平局。",
-        "win"
-      );
-
-      updateButtons();
-
-      return;
-    }
-
-
-    currentPlayer =
-      HUMAN;
-
-    aiThinking =
-      false;
-
+  const searchId = ++pendingSearchId;
+  const flat = boardToFlat();
+
+  aiWorker.postMessage({
+    type: "search",
+    searchId,
+    board: flat
+  }, [flat.buffer]);
+}
+
+function handleWorkerMessage(event) {
+  const data = event.data || {};
+
+  if (data.type === "ready") {
+    aiReady = true;
 
     modelInfoEl.textContent =
-      "MCTS " +
-      simulations +
-      "次 · " +
-      (elapsed / 1000)
-        .toFixed(2) +
-      "s · Value " +
-      result.rootValue
-        .toFixed(3) +
-      " · 最佳访问 " +
-      result.bestVisits +
-      "/" +
-      result.totalVisits +
-      " · 落子(" +
-      x + "," + y + ")";
-
+      "AI 加载成功 · " +
+      data.model +
+      " · ORT Web " +
+      data.ortVersion +
+      " · WASM 单线程 · Adaptive MCTS 50/100/150";
 
     updateStatus();
     updateButtons();
+    return;
+  }
 
-  } catch (err) {
-
-    console.error(
-      "AI error:",
-      err
-    );
-
-    aiThinking =
-      false;
-
-    currentPlayer =
-      HUMAN;
+  if (data.type === "progress") {
+    if (
+      !aiThinking ||
+      data.searchId !== pendingSearchId
+    ) {
+      return;
+    }
 
     setStatus(
-      "AI 推理/搜索失败",
-      "error"
+      "AI 思考中 · 已搜索 " + data.simulations + " 次",
+      "ai"
     );
+    return;
+  }
+
+  if (data.type === "result") {
+    if (
+      !aiThinking ||
+      data.searchId !== pendingSearchId
+    ) {
+      return;
+    }
+
+    const x = data.x | 0;
+    const y = data.y | 0;
+
+    lastAIValue =
+      Number.isFinite(data.rootValue)
+        ? data.rootValue
+        : null;
+
+    if (!placeMove(x, y, AI, data.source || "adaptive-mcts")) {
+      aiThinking = false;
+      currentPlayer = HUMAN;
+      setStatus("AI 返回了非法落子", "error");
+      updateButtons();
+      return;
+    }
+
+    console.log("AI move", data);
+
+    if (checkWin(x, y, AI)) {
+      gameOver = true;
+      aiThinking = false;
+
+      setStatus(
+        "AI 获胜！ · " +
+        data.simulations +
+        " sims · " +
+        data.elapsedMs.toFixed(0) +
+        " ms",
+        "win"
+      );
+
+      modelInfoEl.textContent =
+        "最后一步：" +
+        data.stopReason +
+        " · NN=" + data.nnEvals +
+        " · Value=" +
+        (lastAIValue === null ? "n/a" : lastAIValue.toFixed(4));
+
+      updateButtons();
+      return;
+    }
+
+    if (isBoardFull()) {
+      gameOver = true;
+      aiThinking = false;
+      setStatus("平局。", "win");
+      updateButtons();
+      return;
+    }
+
+    currentPlayer = HUMAN;
+    aiThinking = false;
+
+    const valueText =
+      lastAIValue === null
+        ? "n/a"
+        : lastAIValue.toFixed(4);
 
     modelInfoEl.textContent =
-      "错误：" +
-      (
-        err &&
-        err.message
-          ? err.message
-          : String(err)
-      );
+      "本步：" +
+      data.simulations +
+      " sims · " +
+      data.elapsedMs.toFixed(0) +
+      " ms · " +
+      data.stopReason +
+      " · NN=" +
+      data.nnEvals +
+      " · Value=" +
+      valueText;
+
+    updateStatus();
+    updateButtons();
+    return;
+  }
+
+  if (data.type === "error") {
+    if (
+      data.searchId !== undefined &&
+      data.searchId !== pendingSearchId
+    ) {
+      return;
+    }
+
+    console.error("AI worker reported error:", data);
+
+    aiThinking = false;
+    aiReady = false;
+
+    setStatus("AI 推理失败", "error");
+    modelInfoEl.textContent =
+      "错误：" + (data.message || "未知错误");
 
     updateButtons();
   }
@@ -2516,15 +706,10 @@ async function normalAIMove() {
 
 
 /* =========================================================
-   绝对棋盘胜负
+   胜负
    ========================================================= */
 
-function checkAbsoluteWin(
-  x,
-  y,
-  player
-) {
-
+function checkWin(x, y, player) {
   const dirs = [
     [1,0],
     [0,1],
@@ -2532,79 +717,40 @@ function checkAbsoluteWin(
     [1,-1]
   ];
 
-  for (
-    const [dx, dy]
-    of dirs
-  ) {
+  for (const [dx, dy] of dirs) {
+    let count = 1;
 
-    let count =
-      1;
-
-
-    for (
-      let step = 1;
-      step < 5;
-      step++
-    ) {
-
-      const nx =
-        x + dx * step;
-
-      const ny =
-        y + dy * step;
+    for (let step = 1; step < 5; step++) {
+      const nx = x + dx * step;
+      const ny = y + dy * step;
 
       if (
-        nx >= 0 &&
-        nx < SIZE &&
-        ny >= 0 &&
-        ny < SIZE &&
-        board[ny][nx] ===
-        player
+        nx >= 0 && nx < SIZE &&
+        ny >= 0 && ny < SIZE &&
+        board[ny][nx] === player
       ) {
-
         count++;
-
       } else {
-
         break;
       }
     }
 
-
-    for (
-      let step = 1;
-      step < 5;
-      step++
-    ) {
-
-      const nx =
-        x - dx * step;
-
-      const ny =
-        y - dy * step;
+    for (let step = 1; step < 5; step++) {
+      const nx = x - dx * step;
+      const ny = y - dy * step;
 
       if (
-        nx >= 0 &&
-        nx < SIZE &&
-        ny >= 0 &&
-        ny < SIZE &&
-        board[ny][nx] ===
-        player
+        nx >= 0 && nx < SIZE &&
+        ny >= 0 && ny < SIZE &&
+        board[ny][nx] === player
       ) {
-
         count++;
-
       } else {
-
         break;
       }
     }
 
-
-    if (
-      count >= 5
-    ) {
-
+    if (count >= 5) {
       return true;
     }
   }
@@ -2612,26 +758,10 @@ function checkAbsoluteWin(
   return false;
 }
 
-
-function isAbsoluteBoardFull() {
-
-  for (
-    let y = 0;
-    y < SIZE;
-    y++
-  ) {
-
-    for (
-      let x = 0;
-      x < SIZE;
-      x++
-    ) {
-
-      if (
-        board[y][x] ===
-        EMPTY
-      ) {
-
+function isBoardFull() {
+  for (let y = 0; y < SIZE; y++) {
+    for (let x = 0; x < SIZE; x++) {
+      if (board[y][x] === EMPTY) {
         return false;
       }
     }
@@ -2646,84 +776,43 @@ function isAbsoluteBoardFull() {
    ========================================================= */
 
 function undoHumanAIPair() {
-
-  if (
-    aiThinking ||
-    history.length === 0
-  ) {
+  if (aiThinking || history.length === 0) {
     return;
   }
 
-  gameOver =
-    false;
-
-
-  if (
-    history.length > 0 &&
-    history[
-      history.length - 1
-    ].color === AI
-  ) {
-
-    const m =
-      history.pop();
-
-    board[m.y][m.x] =
-      EMPTY;
-  }
-
+  gameOver = false;
+  pendingSearchId++;
 
   if (
     history.length > 0 &&
-    history[
-      history.length - 1
-    ].color === HUMAN
+    history[history.length - 1].color === AI
   ) {
-
-    const m =
-      history.pop();
-
-    board[m.y][m.x] =
-      EMPTY;
+    const m = history.pop();
+    board[m.y][m.x] = EMPTY;
   }
 
-
   if (
-    history.length > 0
+    history.length > 0 &&
+    history[history.length - 1].color === HUMAN
   ) {
+    const m = history.pop();
+    board[m.y][m.x] = EMPTY;
+  }
 
-    const m =
-      history[
-        history.length - 1
-      ];
-
-    lastMove = {
-      x: m.x,
-      y: m.y
-    };
-
+  if (history.length > 0) {
+    const m = history[history.length - 1];
+    lastMove = { x: m.x, y: m.y };
   } else {
-
-    lastMove =
-      null;
+    lastMove = null;
   }
 
-
-  currentPlayer =
-    HUMAN;
-
-  lastAIValue =
-    null;
-
-  lastSearchMs =
-    null;
-
+  currentPlayer = HUMAN;
+  lastAIValue = null;
 
   modelInfoEl.textContent =
     aiReady
-      ? "AI 已就绪 · 已悔棋"
-      : "模型：gomoku_single.onnx";
-
+      ? "UINT8 Adaptive MCTS 已加载 · 已悔棋"
+      : "准备加载 AI";
 
   drawBoard();
   updateStatus();
@@ -2735,45 +824,25 @@ function undoHumanAIPair() {
    事件
    ========================================================= */
 
-canvas.addEventListener(
-  "pointerdown",
-  handleBoardPointer
-);
+canvas.addEventListener("pointerdown", handleBoardPointer);
+window.addEventListener("resize", resizeCanvas);
 
+undoBtn.addEventListener("click", undoHumanAIPair);
 
-window.addEventListener(
-  "resize",
-  resizeCanvas
-);
+reloadBtn.addEventListener("click", () => {
+  pendingSearchId++;
+  aiThinking = false;
+  loadAIWorker();
+  updateButtons();
+});
 
-
-undoBtn.addEventListener(
-  "click",
-  undoHumanAIPair
-);
-
-
-reloadBtn.addEventListener(
-  "click",
-  loadAIModel
-);
-
-
-restartBtn.addEventListener(
-  "click",
-  () => {
-
-    initGame();
-
-    if (
-      aiReady
-    ) {
-
-      modelInfoEl.textContent =
-        "AI 已就绪 · 新棋局";
-    }
+restartBtn.addEventListener("click", () => {
+  initGame();
+  if (aiReady) {
+    modelInfoEl.textContent =
+      "UINT8 Adaptive MCTS 已加载 · 新棋局";
   }
-);
+});
 
 
 /* =========================================================
@@ -2783,6 +852,5 @@ restartBtn.addEventListener(
 initApp();
 
 </script>
-
 </body>
 </html>
