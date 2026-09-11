@@ -6,7 +6,7 @@
   rookie   菜鸟 : Policy 前4名随机
   beginner 新手 : Policy 前2名随机
   expert   专家 : 一步必赢/必堵 + MCTS20
-  master   大师 : 一步必赢/必堵 + Adaptive 50->100->150
+  master   大师 : 一步必赢/必堵 + Adaptive 50->100->150\n  hint          : 菜鸟/新手可按需调用大师分析并返回前2推荐
 */
 
 const SIZE = 15;
@@ -19,7 +19,7 @@ const ORT_BASE =
   "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
 
 const MODEL_URL =
-  "./gomoku_uint8_qop_u8u8.onnx?v=u8-qop-difficulty-20260911-2";
+  "./gomoku_uint8_qop_u8u8.onnx?v=u8-qop-teaching-20260911-1";
 
 const CPUCT = 0.8;
 
@@ -248,6 +248,23 @@ function absoluteToAIRelative(absBoard) {
   return b;
 }
 
+function absoluteToHumanRelative(absBoard) {
+  const b =
+    new Int8Array(CELLS);
+
+  for (let i = 0; i < CELLS; i++) {
+    if (absBoard[i] === HUMAN) {
+      b[i] = 1;
+    } else if (absBoard[i] === AI) {
+      b[i] = -1;
+    } else {
+      b[i] = 0;
+    }
+  }
+
+  return b;
+}
+
 function perspectiveBoard(rootBoard, depth) {
   if ((depth & 1) === 0) return rootBoard;
 
@@ -395,19 +412,28 @@ class SearchTree {
     this.simulations++;
   }
 
-  async runUntil(target, searchId) {
+  async runUntil(target, searchId, progressType = "progress") {
     while (this.simulations < target) {
       await this.runOne();
+
       if ((this.simulations & 15) === 0) {
         await Promise.resolve();
       }
     }
 
-    self.postMessage({
-      type: "progress",
-      searchId,
-      simulations: this.simulations
-    });
+    if (progressType === "hint-progress") {
+      self.postMessage({
+        type: "hint-progress",
+        hintId: searchId,
+        simulations: this.simulations
+      });
+    } else {
+      self.postMessage({
+        type: "progress",
+        searchId,
+        simulations: this.simulations
+      });
+    }
   }
 
   rootStats() {
@@ -434,11 +460,29 @@ class SearchTree {
 
     return {
       bestMove: first.move,
+      secondMove: second ? second.move : -1,
       n1,
       n2,
+      totalVisits,
       share: n1 / Math.max(totalVisits, 1),
       ratio: (n1 + 1) / (n2 + 1)
     };
+  }
+
+  topRootChildren(limit = 2, excludeMove = -1) {
+    const children =
+      (this.root.children || [])
+        .filter((ch) => ch.move !== excludeMove)
+        .slice();
+
+    children.sort((a, b) => {
+      if (b.N !== a.N) {
+        return b.N - a.N;
+      }
+      return b.prior - a.prior;
+    });
+
+    return children.slice(0, limit);
   }
 }
 
@@ -540,6 +584,215 @@ async function adaptiveSearch(relativeBoard, searchId, cfg) {
   };
 }
 
+function buildHintCandidates(tree, forcedRule = null) {
+  const candidates = [];
+
+  if (forcedRule && forcedRule.move >= 0) {
+    candidates.push({
+      move: forcedRule.move,
+      prob: 1.0,
+      forced: true,
+      reason: forcedRule.reason
+    });
+
+    const second =
+      tree.topRootChildren(
+        1,
+        forcedRule.move
+      )[0];
+
+    if (second) {
+      candidates.push({
+        move: second.move,
+        prob: 0.0,
+        forced: false,
+        reason: "参考"
+      });
+    }
+
+    return candidates;
+  }
+
+  const top =
+    tree.topRootChildren(2);
+
+  if (top.length === 0) {
+    return candidates;
+  }
+
+  let denom = 0;
+
+  for (const ch of top) {
+    denom += ch.N;
+  }
+
+  if (denom <= 0) {
+    for (const ch of top) {
+      denom += Math.max(ch.prior, 0);
+    }
+
+    for (const ch of top) {
+      candidates.push({
+        move: ch.move,
+        prob:
+          denom > 0
+            ? Math.max(ch.prior, 0) / denom
+            : 1 / top.length,
+        forced: false,
+        reason: ""
+      });
+    }
+
+  } else {
+    for (const ch of top) {
+      candidates.push({
+        move: ch.move,
+        prob: ch.N / denom,
+        forced: false,
+        reason: ""
+      });
+    }
+  }
+
+  return candidates;
+}
+
+async function masterHintSearch(relativeBoard, hintId) {
+  const started =
+    performance.now();
+
+  const cfg =
+    DIFFICULTIES.master;
+
+  /*
+    教学提示仍使用大师搜索。
+    即便存在一步必赢/必堵，也继续建立 MCTS 树，
+    这样可以额外给出第二候选；第一候选由规则强制置顶。
+  */
+  const forcedRule =
+    immediateRule(
+      relativeBoard,
+      1.0
+    );
+
+  const tree =
+    new SearchTree(relativeBoard);
+
+  const s1Target =
+    cfg.stages[0];
+
+  const s2Target =
+    cfg.stages[1];
+
+  const s3Target =
+    cfg.stages[2];
+
+  await tree.runUntil(
+    s1Target,
+    hintId,
+    "hint-progress"
+  );
+
+  let stats =
+    tree.rootStats();
+
+  let stopReason =
+    "大师提示 · 50次";
+
+  if (
+    !forcedRule &&
+    stats.share >= cfg.earlyShare &&
+    stats.ratio >= cfg.earlyRatio
+  ) {
+    return {
+      candidates:
+        buildHintCandidates(
+          tree,
+          null
+        ),
+      simulations:
+        tree.simulations,
+      nnEvals:
+        tree.nnEvals,
+      rootValue:
+        tree.rootValue,
+      elapsedMs:
+        performance.now() - started,
+      stopReason
+    };
+  }
+
+  const move50 =
+    stats.bestMove;
+
+  await tree.runUntil(
+    s2Target,
+    hintId,
+    "hint-progress"
+  );
+
+  stats =
+    tree.rootStats();
+
+  const stable =
+    stats.bestMove === move50;
+
+  stopReason =
+    "大师提示 · 100次";
+
+  if (
+    !forcedRule &&
+    stable &&
+    stats.ratio >= cfg.midRatio
+  ) {
+    return {
+      candidates:
+        buildHintCandidates(
+          tree,
+          null
+        ),
+      simulations:
+        tree.simulations,
+      nnEvals:
+        tree.nnEvals,
+      rootValue:
+        tree.rootValue,
+      elapsedMs:
+        performance.now() - started,
+      stopReason
+    };
+  }
+
+  await tree.runUntil(
+    s3Target,
+    hintId,
+    "hint-progress"
+  );
+
+  stopReason =
+    forcedRule
+      ? "大师提示 · " +
+        forcedRule.reason
+      : "大师提示 · 150次";
+
+  return {
+    candidates:
+      buildHintCandidates(
+        tree,
+        forcedRule
+      ),
+    simulations:
+      tree.simulations,
+    nnEvals:
+      tree.nnEvals,
+    rootValue:
+      tree.rootValue,
+    elapsedMs:
+      performance.now() - started,
+    stopReason
+  };
+}
+
 async function searchByDifficulty(relativeBoard, searchId, difficulty) {
   const cfg = DIFFICULTIES[difficulty] || DIFFICULTIES.beginner;
 
@@ -570,10 +823,84 @@ self.onmessage = async (event) => {
       return;
     }
 
-    if (data.type !== "search") return;
+    if (data.type === "hint") {
+      const hintId =
+        data.hintId;
+
+      if (!data.board) {
+        throw new Error(
+          "hint 消息没有棋盘数据"
+        );
+      }
+
+      const absBoard =
+        data.board instanceof Int8Array
+          ? data.board
+          : new Int8Array(data.board);
+
+      if (absBoard.length !== CELLS) {
+        throw new Error(
+          "棋盘长度错误：" +
+          absBoard.length +
+          "，应为 " +
+          CELLS
+        );
+      }
+
+      await getSession();
+
+      const relative =
+        absoluteToHumanRelative(
+          absBoard
+        );
+
+      const result =
+        await masterHintSearch(
+          relative,
+          hintId
+        );
+
+      const candidates =
+        result.candidates.map(
+          (c) => ({
+            x: c.move % SIZE,
+            y: Math.floor(c.move / SIZE),
+            prob: c.prob,
+            forced: c.forced,
+            reason: c.reason
+          })
+        );
+
+      self.postMessage({
+        type: "hint-result",
+        hintId,
+        candidates,
+        simulations:
+          result.simulations,
+        nnEvals:
+          result.nnEvals,
+        rootValue:
+          result.rootValue,
+        elapsedMs:
+          result.elapsedMs,
+        stopReason:
+          result.stopReason
+      });
+
+      return;
+    }
+
+    if (data.type !== "search") {
+      return;
+    }
 
     const searchId = data.searchId;
-    if (!data.board) throw new Error("search 消息没有棋盘数据");
+
+    if (!data.board) {
+      throw new Error(
+        "search 消息没有棋盘数据"
+      );
+    }
 
     const absBoard = data.board instanceof Int8Array ? data.board : new Int8Array(data.board);
     if (absBoard.length !== CELLS) {
@@ -607,10 +934,25 @@ self.onmessage = async (event) => {
     });
 
   } catch (error) {
-    self.postMessage({
-      type: "error",
-      searchId: data.searchId,
-      message: error && error.message ? error.message : String(error)
-    });
+    if (data.type === "hint") {
+      self.postMessage({
+        type: "hint-error",
+        hintId: data.hintId,
+        message:
+          error && error.message
+            ? error.message
+            : String(error)
+      });
+
+    } else {
+      self.postMessage({
+        type: "error",
+        searchId: data.searchId,
+        message:
+          error && error.message
+            ? error.message
+            : String(error)
+      });
+    }
   }
 };

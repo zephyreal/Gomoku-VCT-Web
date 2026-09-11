@@ -99,6 +99,32 @@
       letter-spacing: .08em;
     }
 
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .sound-btn {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border-radius: 999px;
+      border: 1px solid rgba(133,190,255,.18);
+      background: rgba(11,25,43,.74);
+      color: #dcecff;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      box-shadow: inset 0 0 18px rgba(75,166,255,.04);
+    }
+
+    .sound-btn:active {
+      transform: scale(.96);
+    }
+
     .engine-dot {
       flex: 0 0 auto;
       display: inline-flex;
@@ -302,6 +328,53 @@
     .status-line.win { color: #ffd27d; }
     .status-line.error { color: #ff96a6; }
 
+    .status-row {
+      margin-top: 5px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 5px;
+      align-items: stretch;
+    }
+
+    .status-row .status-line {
+      margin-top: 0;
+    }
+
+    .hint-btn {
+      min-width: 86px;
+      min-height: 29px;
+      padding: 4px 9px;
+      border-radius: 10px;
+      border: 1px solid rgba(77, 216, 255, .36);
+      color: #dff8ff;
+      background:
+        linear-gradient(180deg,
+          rgba(20, 92, 139, .76),
+          rgba(10, 48, 82, .88));
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.05),
+        0 0 18px rgba(49, 191, 255, .10);
+      font-size: 10px;
+      font-weight: 720;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .hint-btn:disabled {
+      opacity: .42;
+      cursor: default;
+    }
+
+    .hint-btn.thinking {
+      color: #8fdfff;
+      animation: hintPulse 1s ease-in-out infinite;
+    }
+
+    @keyframes hintPulse {
+      0%, 100% { box-shadow: 0 0 10px rgba(49,191,255,.08); }
+      50% { box-shadow: 0 0 22px rgba(49,191,255,.26); }
+    }
+
     .actions {
       display: grid;
       grid-template-columns: 1fr 1.2fr 1fr;
@@ -404,9 +477,17 @@
       <div class="brand-sub">标准对局 · 15×15</div>
     </div>
 
-    <div class="engine-dot">
-      <i></i>
-      ONLINE
+    <div class="top-actions">
+      <button id="soundBtn"
+              class="sound-btn"
+              type="button"
+              aria-label="声音开关"
+              title="声音开关">🔊</button>
+
+      <div class="engine-dot">
+        <i></i>
+        ONLINE
+      </div>
     </div>
   </header>
 
@@ -453,7 +534,10 @@
     </div>
   </section>
 
-  <div id="status" class="status-line loading">正在加载 AI...</div>
+  <div class="status-row">
+    <div id="status" class="status-line loading">正在加载 AI...</div>
+    <button id="hintBtn" class="hint-btn" type="button">✦ 大师提示</button>
+  </div>
 
   <div class="actions">
     <button class="action-btn" id="undoBtn">↶ 悔棋</button>
@@ -462,7 +546,7 @@
   </div>
 
   <div class="footnote">
-    UINT8 · WASM · 147 KB · 大师模式 Adaptive MCTS 50→100→150
+    🔊 落子与提示音 · 菜鸟/新手可点“大师提示” · UINT8 · WASM
   </div>
 </div>
 
@@ -474,7 +558,7 @@ const EMPTY = 0;
 const HUMAN = 1;
 const AI = 2;
 
-const AI_WORKER_URL = "./ai-worker.js?v=dark-dd-20260911-1";
+const AI_WORKER_URL = "./ai-worker.js?v=teaching-hint-20260911-1";
 
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
@@ -487,6 +571,8 @@ const valueMetricEl = document.getElementById("valueMetric");
 const undoBtn = document.getElementById("undoBtn");
 const reloadBtn = document.getElementById("reloadBtn");
 const restartBtn = document.getElementById("restartBtn");
+const hintBtn = document.getElementById("hintBtn");
+const soundBtn = document.getElementById("soundBtn");
 
 const difficultyTrigger = document.getElementById("difficultyTrigger");
 const difficultyText = document.getElementById("difficultyText");
@@ -512,6 +598,179 @@ let lastMove = null;
 let aiWorker = null;
 let aiReady = false;
 let pendingSearchId = 0;
+let pendingHintId = 0;
+let hintThinking = false;
+let hintMoves = [];
+
+/* =========================================================
+   声音系统
+   - 不使用外部 mp3/wav
+   - 通过 Web Audio API 实时生成
+   - 浏览器要求首次用户交互后才能发声
+   ========================================================= */
+
+let soundEnabled =
+  localStorage.getItem("gomokuSound") !== "off";
+
+let audioCtx = null;
+
+function syncSoundButton() {
+  soundBtn.textContent =
+    soundEnabled ? "🔊" : "🔇";
+
+  soundBtn.setAttribute(
+    "aria-label",
+    soundEnabled ? "关闭声音" : "打开声音"
+  );
+
+  soundBtn.title =
+    soundEnabled ? "关闭声音" : "打开声音";
+}
+
+function ensureAudio() {
+  if (!soundEnabled) {
+    return null;
+  }
+
+  const AudioContextClass =
+    window.AudioContext ||
+    window.webkitAudioContext;
+
+  if (!AudioContextClass) {
+    return null;
+  }
+
+  if (!audioCtx) {
+    audioCtx =
+      new AudioContextClass();
+  }
+
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume().catch(() => {});
+  }
+
+  return audioCtx;
+}
+
+function tone(
+  frequency,
+  duration = 0.06,
+  volume = 0.035,
+  type = "sine",
+  delay = 0
+) {
+  const ac = ensureAudio();
+  if (!ac) return;
+
+  const t0 =
+    ac.currentTime + delay;
+
+  const osc =
+    ac.createOscillator();
+
+  const gain =
+    ac.createGain();
+
+  osc.type = type;
+  osc.frequency.setValueAtTime(
+    frequency,
+    t0
+  );
+
+  gain.gain.setValueAtTime(
+    Math.max(volume, 0.0001),
+    t0
+  );
+
+  gain.gain.exponentialRampToValueAtTime(
+    0.0001,
+    t0 + duration
+  );
+
+  osc.connect(gain);
+  gain.connect(ac.destination);
+
+  osc.start(t0);
+  osc.stop(t0 + duration + 0.01);
+}
+
+function playStoneSound(color) {
+  /*
+    两种棋子略有区别：
+    黑棋稍低沉，白棋稍清脆。
+  */
+  if (color === HUMAN) {
+    tone(310, 0.045, 0.040, "triangle");
+    tone(165, 0.055, 0.020, "sine", 0.008);
+  } else {
+    tone(420, 0.045, 0.035, "triangle");
+    tone(220, 0.050, 0.018, "sine", 0.008);
+  }
+}
+
+function playClickSound() {
+  tone(760, 0.025, 0.018, "sine");
+}
+
+function playHintSound() {
+  tone(660, 0.075, 0.026, "sine", 0.00);
+  tone(990, 0.090, 0.024, "sine", 0.07);
+}
+
+function playWinSound() {
+  tone(523.25, 0.11, 0.030, "sine", 0.00);
+  tone(659.25, 0.11, 0.030, "sine", 0.10);
+  tone(783.99, 0.18, 0.034, "sine", 0.20);
+}
+
+function playLoseSound() {
+  tone(392.00, 0.10, 0.028, "triangle", 0.00);
+  tone(329.63, 0.11, 0.025, "triangle", 0.10);
+  tone(261.63, 0.18, 0.026, "triangle", 0.20);
+}
+
+function playErrorSound() {
+  tone(170, 0.16, 0.025, "sawtooth");
+}
+
+function unlockAudioFromGesture() {
+  ensureAudio();
+}
+
+function teachingAvailable() {
+  return difficulty === "rookie" || difficulty === "beginner";
+}
+
+function clearHints(redraw = true) {
+  hintMoves = [];
+  if (redraw) drawBoard();
+}
+
+function updateHintButton() {
+  const available =
+    teachingAvailable() &&
+    aiReady &&
+    !gameOver &&
+    currentPlayer === HUMAN;
+
+  hintBtn.style.display =
+    teachingAvailable() ? "" : "none";
+
+  hintBtn.disabled =
+    !available ||
+    aiThinking ||
+    hintThinking;
+
+  hintBtn.classList.toggle(
+    "thinking",
+    hintThinking
+  );
+
+  hintBtn.textContent =
+    hintThinking
+      ? "✦ 分析中..."
+      : "✦ 大师提示";
+}
 
 function setStatus(text, cls = "") {
   statusEl.textContent = text;
@@ -562,9 +821,10 @@ function updateStatus() {
 }
 
 function updateButtons() {
-  undoBtn.disabled = aiThinking || history.length === 0;
-  reloadBtn.disabled = aiThinking;
-  restartBtn.disabled = aiThinking;
+  undoBtn.disabled = aiThinking || hintThinking || history.length === 0;
+  reloadBtn.disabled = aiThinking || hintThinking;
+  restartBtn.disabled = aiThinking || hintThinking;
+  updateHintButton();
 }
 
 function resetMetrics() {
@@ -599,6 +859,9 @@ function initGame() {
   aiThinking = false;
   lastMove = null;
   pendingSearchId++;
+  pendingHintId++;
+  hintThinking = false;
+  hintMoves = [];
 
   resetMetrics();
   resizeCanvas();
@@ -637,6 +900,7 @@ function loadAIWorker() {
 
 function initApp() {
   syncDifficultyUI();
+  syncSoundButton();
   initGame();
   loadAIWorker();
 }
@@ -720,6 +984,8 @@ function drawBoard() {
     }
   }
 
+  drawHintOverlays(margin, gap);
+
   if (lastMove) {
     const cx = margin + lastMove.x * gap;
     const cy = margin + lastMove.y * gap;
@@ -736,6 +1002,136 @@ function drawBoard() {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+function drawHintOverlays(margin, gap) {
+  if (!hintMoves || hintMoves.length === 0) {
+    return;
+  }
+
+  for (let i = 0; i < hintMoves.length; i++) {
+    const h = hintMoves[i];
+
+    if (
+      h.x < 0 || h.x >= SIZE ||
+      h.y < 0 || h.y >= SIZE ||
+      board[h.y][h.x] !== EMPTY
+    ) {
+      continue;
+    }
+
+    const cx = margin + h.x * gap;
+    const cy = margin + h.y * gap;
+
+    const isFirst = i === 0;
+    const alpha = isFirst ? 0.82 : 0.34;
+    const ringAlpha = isFirst ? 0.95 : 0.56;
+    const radius = gap * (isFirst ? 0.34 : 0.30);
+
+    ctx.save();
+
+    // Soft filled recommendation marker
+    ctx.fillStyle =
+      `rgba(35, 190, 255, ${alpha})`;
+    ctx.shadowColor =
+      isFirst
+        ? "rgba(41, 195, 255, .95)"
+        : "rgba(41, 195, 255, .38)";
+    ctx.shadowBlur =
+      isFirst ? gap * .42 : gap * .20;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bright ring
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle =
+      `rgba(190, 242, 255, ${ringAlpha})`;
+    ctx.lineWidth =
+      Math.max(1.2, gap * .045);
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Rank number
+    ctx.fillStyle = "#06121f";
+    ctx.font =
+      `700 ${Math.max(8, gap * .25)}px system-ui`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      String(i + 1),
+      cx,
+      cy
+    );
+
+    // Probability badge
+    const pct =
+      Math.max(0, Math.min(100, Math.round((h.prob || 0) * 100)));
+
+    const label =
+      h.forced
+        ? (h.reason || "必")
+        : pct + "%";
+
+    ctx.font =
+      `700 ${Math.max(7, gap * .20)}px system-ui`;
+
+    const textW =
+      ctx.measureText(label).width;
+
+    const bx =
+      cx + radius * .70;
+
+    const by =
+      cy - radius * .85;
+
+    const padX =
+      Math.max(2, gap * .06);
+
+    const bh =
+      Math.max(11, gap * .30);
+
+    const bw =
+      textW + padX * 2;
+
+    ctx.fillStyle =
+      isFirst
+        ? "rgba(5, 28, 48, .92)"
+        : "rgba(8, 34, 52, .76)";
+
+    roundRect(
+      ctx,
+      bx - bw / 2,
+      by - bh / 2,
+      bw,
+      bh,
+      bh / 2
+    );
+    ctx.fill();
+
+    ctx.fillStyle =
+      isFirst ? "#c9f5ff" : "#9fddef";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, bx, by);
+
+    ctx.restore();
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
 }
 
 function drawStone(x, y, color, margin, gap) {
@@ -784,6 +1180,7 @@ function placeMove(x, y, color, source) {
   history.push({ x, y, color, source });
   lastMove = { x, y };
 
+  playStoneSound(color);
   drawBoard();
   updateButtons();
   return true;
@@ -810,10 +1207,12 @@ function handleBoardPointer(e) {
   if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) return;
   if (board[y][x] !== EMPTY) return;
 
+  clearHints(false);
   placeMove(x, y, HUMAN, "human");
 
   if (checkWin(x, y, HUMAN)) {
     gameOver = true;
+    playWinSound();
     setStatus("你获胜了！", "win");
     updateButtons();
     return;
@@ -844,6 +1243,7 @@ function boardToFlat() {
 function normalAIMove() {
   if (!aiReady || !aiWorker || gameOver || currentPlayer !== AI) return;
 
+  clearHints(false);
   aiThinking = true;
   updateStatus();
   updateButtons();
@@ -865,6 +1265,85 @@ function handleWorkerMessage(event) {
   if (data.type === "ready") {
     aiReady = true;
     updateStatus();
+    updateButtons();
+    return;
+  }
+
+  if (data.type === "hint-progress") {
+    if (
+      !hintThinking ||
+      data.hintId !== pendingHintId
+    ) {
+      return;
+    }
+
+    setStatus(
+      "大师提示分析中 · " +
+      data.simulations +
+      " 次搜索",
+      "ai"
+    );
+
+    return;
+  }
+
+  if (data.type === "hint-result") {
+    if (
+      !hintThinking ||
+      data.hintId !== pendingHintId
+    ) {
+      return;
+    }
+
+    hintThinking = false;
+
+    hintMoves =
+      Array.isArray(data.candidates)
+        ? data.candidates
+        : [];
+
+    if (hintMoves.length > 0) {
+      playHintSound();
+    }
+
+    drawBoard();
+
+    if (hintMoves.length >= 2) {
+      const p1 =
+        Math.round(
+          (hintMoves[0].prob || 0) * 100
+        );
+
+      const p2 =
+        Math.round(
+          (hintMoves[1].prob || 0) * 100
+        );
+
+      setStatus(
+        "大师提示：① " +
+        p1 +
+        "% · ② " +
+        p2 +
+        "% · " +
+        data.simulations +
+        " sims",
+        "ai"
+      );
+
+    } else if (hintMoves.length === 1) {
+      setStatus(
+        "大师提示：" +
+        (hintMoves[0].reason || "唯一强制落点"),
+        "ai"
+      );
+
+    } else {
+      setStatus(
+        "当前局面未获得有效提示",
+        "error"
+      );
+    }
+
     updateButtons();
     return;
   }
@@ -894,6 +1373,7 @@ function handleWorkerMessage(event) {
     if (checkWin(x, y, AI)) {
       gameOver = true;
       aiThinking = false;
+      playLoseSound();
       setStatus("AI 获胜 · " + data.simulations + " sims · " + data.elapsedMs.toFixed(0) + " ms", "win");
       updateButtons();
       return;
@@ -914,6 +1394,25 @@ function handleWorkerMessage(event) {
     return;
   }
 
+  if (data.type === "hint-error") {
+    if (
+      data.hintId !== pendingHintId
+    ) {
+      return;
+    }
+
+    hintThinking = false;
+    playErrorSound();
+    setStatus(
+      "大师提示失败：" +
+      (data.message || "未知错误"),
+      "error"
+    );
+
+    updateButtons();
+    return;
+  }
+
   if (data.type === "error") {
     if (data.searchId !== undefined && data.searchId !== pendingSearchId) return;
     console.error("AI worker reported error:", data);
@@ -922,6 +1421,43 @@ function handleWorkerMessage(event) {
     setStatus("AI 推理失败：" + (data.message || "未知错误"), "error");
     updateButtons();
   }
+}
+
+function requestMasterHint() {
+  if (
+    !teachingAvailable() ||
+    !aiReady ||
+    gameOver ||
+    aiThinking ||
+    hintThinking ||
+    currentPlayer !== HUMAN
+  ) {
+    return;
+  }
+
+  closeDifficultyMenu();
+
+  hintThinking = true;
+  hintMoves = [];
+  drawBoard();
+  updateButtons();
+
+  setStatus(
+    "大师正在分析当前局面...",
+    "ai"
+  );
+
+  const hintId =
+    ++pendingHintId;
+
+  const flat =
+    boardToFlat();
+
+  aiWorker.postMessage({
+    type: "hint",
+    hintId,
+    board: flat
+  }, [flat.buffer]);
 }
 
 function checkWin(x, y, player) {
@@ -959,6 +1495,9 @@ function undoHumanAIPair() {
 
   gameOver = false;
   pendingSearchId++;
+  pendingHintId++;
+  hintThinking = false;
+  hintMoves = [];
 
   if (history.length > 0 && history[history.length - 1].color === AI) {
     const m = history.pop();
@@ -984,12 +1523,27 @@ function undoHumanAIPair() {
   updateButtons();
 }
 
-canvas.addEventListener("pointerdown", handleBoardPointer);
+canvas.addEventListener("pointerdown", (e) => {
+  unlockAudioFromGesture();
+  handleBoardPointer(e);
+});
 window.addEventListener("resize", resizeCanvas);
 
-undoBtn.addEventListener("click", undoHumanAIPair);
+undoBtn.addEventListener("click", () => {
+  unlockAudioFromGesture();
+  playClickSound();
+  undoHumanAIPair();
+});
+
+hintBtn.addEventListener("click", () => {
+  unlockAudioFromGesture();
+  playClickSound();
+  requestMasterHint();
+});
 
 reloadBtn.addEventListener("click", () => {
+  unlockAudioFromGesture();
+  playClickSound();
   closeDifficultyMenu();
   pendingSearchId++;
   aiThinking = false;
@@ -998,17 +1552,24 @@ reloadBtn.addEventListener("click", () => {
 });
 
 restartBtn.addEventListener("click", () => {
+  unlockAudioFromGesture();
+  playClickSound();
   closeDifficultyMenu();
   initGame();
 });
 
 difficultyTrigger.addEventListener("click", (e) => {
+  unlockAudioFromGesture();
+  playClickSound();
   e.stopPropagation();
   toggleDifficultyMenu();
 });
 
 difficultyItems.forEach((item) => {
   item.addEventListener("click", () => {
+    unlockAudioFromGesture();
+    playClickSound();
+
     const selected = item.dataset.difficulty;
     if (!DIFFICULTY_NAMES[selected]) return;
 
@@ -1020,6 +1581,26 @@ difficultyItems.forEach((item) => {
     setStatus("已切换为 " + DIFFICULTY_NAMES[difficulty] + " 难度");
     setTimeout(updateStatus, 650);
   });
+});
+
+soundBtn.addEventListener("click", () => {
+  /*
+    若当前是关闭状态，先打开，再初始化 AudioContext；
+    若当前是开启状态，先播放一下轻触音再关闭。
+  */
+  if (soundEnabled) {
+    unlockAudioFromGesture();
+    playClickSound();
+    soundEnabled = false;
+    localStorage.setItem("gomokuSound", "off");
+  } else {
+    soundEnabled = true;
+    localStorage.setItem("gomokuSound", "on");
+    unlockAudioFromGesture();
+    playClickSound();
+  }
+
+  syncSoundButton();
 });
 
 document.addEventListener("click", (e) => {
