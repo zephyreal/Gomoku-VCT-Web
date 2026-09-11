@@ -3,10 +3,10 @@
 /*
   ai-worker.js — Four Difficulty / Dark Dropdown Edition
   ------------------------------------------------------------
-  rookie   菜鸟 : Policy 前4名随机
-  beginner 新手 : Policy 前2名随机
-  expert   专家 : 一步必赢/必堵 + MCTS20
-  master   大师 : 一步必赢/必堵 + Adaptive 50->100->150\n  hint          : 菜鸟/新手可按需调用大师分析并返回前2推荐
+  rookie   练气 : Policy 前3名随机
+  beginner 筑基 : Policy Top1
+  expert   结丹 : 一步必赢/必堵 + MCTS20
+  master   元婴 : 一步必赢/必堵 + Adaptive 50->100->150\n  hint          : 练气/筑基/结丹可按需调用元婴分析并返回前2推荐
 */
 
 const SIZE = 15;
@@ -19,32 +19,31 @@ const ORT_BASE =
   "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
 
 const MODEL_URL =
-  "./gomoku_uint8_qop_u8u8.onnx?v=u8-qop-teaching-20260911-1";
+  "./gomoku_uint8_qop_u8u8.onnx?v=cultivation-20260911-1";
 
 const CPUCT = 0.8;
 
 const DIFFICULTIES = {
   rookie: {
-    label: "菜鸟",
+    label: "练气",
     type: "policy-random-topk",
-    topK: 4
+    topK: 3
   },
 
   beginner: {
-    label: "新手",
-    type: "policy-random-topk",
-    topK: 2
+    label: "筑基",
+    type: "policy-top1"
   },
 
   expert: {
-    label: "专家",
+    label: "结丹",
     type: "fixed",
     simulations: 20,
     blockChance: 1.0
   },
 
   master: {
-    label: "大师",
+    label: "元婴",
     type: "adaptive",
     stages: [50, 100, 150],
     earlyShare: 0.60,
@@ -301,8 +300,49 @@ async function topKPolicySearch(relativeBoard, cfg) {
     nnEvals: 1,
     rootValue: pred.value,
     elapsedMs: performance.now() - started,
-    stopReason: cfg.label + " · Policy 前" + cfg.topK + "名随机",
+    stopReason: cfg.label + "完成落子",
     source: "policy-topk"
+  };
+}
+
+async function top1PolicySearch(relativeBoard, cfg) {
+  const started = performance.now();
+
+  const pred =
+    await predictRelative(relativeBoard);
+
+  let bestMove = -1;
+  let bestProb = -Infinity;
+
+  for (let i = 0; i < CELLS; i++) {
+    if (relativeBoard[i] !== 0) {
+      continue;
+    }
+
+    const p =
+      Number(pred.policy[i]) || 0;
+
+    if (p > bestProb) {
+      bestProb = p;
+      bestMove = i;
+    }
+  }
+
+  if (bestMove < 0) {
+    throw new Error(
+      cfg.label + " 模式没有合法落子"
+    );
+  }
+
+  return {
+    move: bestMove,
+    simulations: 1,
+    nnEvals: 1,
+    rootValue: pred.value,
+    elapsedMs:
+      performance.now() - started,
+    stopReason: cfg.label + "完成落子",
+    source: "policy-top1"
   };
 }
 
@@ -512,7 +552,7 @@ async function fixedSearch(relativeBoard, searchId, cfg) {
     nnEvals: tree.nnEvals,
     rootValue: tree.rootValue,
     elapsedMs: performance.now() - started,
-    stopReason: cfg.label + " · MCTS" + cfg.simulations,
+    stopReason: cfg.label + "完成落子",
     source: "mcts-fixed"
   };
 }
@@ -548,7 +588,7 @@ async function adaptiveSearch(relativeBoard, searchId, cfg) {
       nnEvals: tree.nnEvals,
       rootValue: tree.rootValue,
       elapsedMs: performance.now() - started,
-      stopReason: cfg.label + " · " + s1Target + "次提前停止",
+      stopReason: cfg.label + "完成落子",
       source: "adaptive-mcts"
     };
   }
@@ -565,7 +605,7 @@ async function adaptiveSearch(relativeBoard, searchId, cfg) {
       nnEvals: tree.nnEvals,
       rootValue: tree.rootValue,
       elapsedMs: performance.now() - started,
-      stopReason: cfg.label + " · " + s2Target + "次稳定停止",
+      stopReason: cfg.label + "完成落子",
       source: "adaptive-mcts"
     };
   }
@@ -579,7 +619,7 @@ async function adaptiveSearch(relativeBoard, searchId, cfg) {
     nnEvals: tree.nnEvals,
     rootValue: tree.rootValue,
     elapsedMs: performance.now() - started,
-    stopReason: cfg.label + " · 困难局面搜索至" + s3Target + "次",
+    stopReason: cfg.label + "完成落子",
     source: "adaptive-mcts"
   };
 }
@@ -665,7 +705,7 @@ async function masterHintSearch(relativeBoard, hintId) {
     DIFFICULTIES.master;
 
   /*
-    教学提示仍使用大师搜索。
+    教学提示仍使用元婴搜索。
     即便存在一步必赢/必堵，也继续建立 MCTS 树，
     这样可以额外给出第二候选；第一候选由规则强制置顶。
   */
@@ -697,7 +737,7 @@ async function masterHintSearch(relativeBoard, hintId) {
     tree.rootStats();
 
   let stopReason =
-    "大师提示 · 50次";
+    "元婴指导 · 50次";
 
   if (
     !forcedRule &&
@@ -738,7 +778,7 @@ async function masterHintSearch(relativeBoard, hintId) {
     stats.bestMove === move50;
 
   stopReason =
-    "大师提示 · 100次";
+    "元婴指导 · 100次";
 
   if (
     !forcedRule &&
@@ -771,9 +811,9 @@ async function masterHintSearch(relativeBoard, hintId) {
 
   stopReason =
     forcedRule
-      ? "大师提示 · " +
+      ? "元婴指导 · " +
         forcedRule.reason
-      : "大师提示 · 150次";
+      : "元婴指导 · 150次";
 
   return {
     candidates:
@@ -793,18 +833,42 @@ async function masterHintSearch(relativeBoard, hintId) {
   };
 }
 
-async function searchByDifficulty(relativeBoard, searchId, difficulty) {
-  const cfg = DIFFICULTIES[difficulty] || DIFFICULTIES.beginner;
+async function searchByDifficulty(
+  relativeBoard,
+  searchId,
+  difficulty
+) {
+  const cfg =
+    DIFFICULTIES[difficulty] ||
+    DIFFICULTIES.beginner;
 
   if (cfg.type === "policy-random-topk") {
-    return topKPolicySearch(relativeBoard, cfg);
+    return topKPolicySearch(
+      relativeBoard,
+      cfg
+    );
+  }
+
+  if (cfg.type === "policy-top1") {
+    return top1PolicySearch(
+      relativeBoard,
+      cfg
+    );
   }
 
   if (cfg.type === "fixed") {
-    return fixedSearch(relativeBoard, searchId, cfg);
+    return fixedSearch(
+      relativeBoard,
+      searchId,
+      cfg
+    );
   }
 
-  return adaptiveSearch(relativeBoard, searchId, cfg);
+  return adaptiveSearch(
+    relativeBoard,
+    searchId,
+    cfg
+  );
 }
 
 self.onmessage = async (event) => {

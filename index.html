@@ -496,14 +496,14 @@
       <div class="metric-label">当前模式</div>
       <div class="difficulty-box">
         <button id="difficultyTrigger" class="difficulty-trigger" type="button" aria-haspopup="true" aria-expanded="false">
-          <span id="difficultyText">新手</span>
+          <span id="difficultyText">筑基</span>
           <span>⌄</span>
         </button>
         <div id="difficultyMenu" class="difficulty-menu" role="menu" aria-label="AI难度">
-          <button class="difficulty-item" data-difficulty="rookie" type="button">菜鸟</button>
-          <button class="difficulty-item" data-difficulty="beginner" type="button">新手</button>
-          <button class="difficulty-item" data-difficulty="expert" type="button">专家</button>
-          <button class="difficulty-item" data-difficulty="master" type="button">大师</button>
+          <button class="difficulty-item" data-difficulty="rookie" type="button">练气</button>
+          <button class="difficulty-item" data-difficulty="beginner" type="button">筑基</button>
+          <button class="difficulty-item" data-difficulty="expert" type="button">结丹</button>
+          <button class="difficulty-item" data-difficulty="master" type="button">元婴</button>
         </div>
       </div>
       <div class="metric-sub">标准对局 · 15×15</div>
@@ -536,7 +536,7 @@
 
   <div class="status-row">
     <div id="status" class="status-line loading">正在加载 AI...</div>
-    <button id="hintBtn" class="hint-btn" type="button">✦ 大师提示</button>
+    <button id="hintBtn" class="hint-btn" type="button">✦ 元婴指导</button>
   </div>
 
   <div class="actions">
@@ -546,7 +546,7 @@
   </div>
 
   <div class="footnote">
-    🔊 落子与提示音 · 菜鸟/新手可点“大师提示” · UINT8 · WASM
+    🔊 落子与提示音 · 练气 / 筑基 / 结丹可使用“元婴指导”
   </div>
 </div>
 
@@ -558,7 +558,7 @@ const EMPTY = 0;
 const HUMAN = 1;
 const AI = 2;
 
-const AI_WORKER_URL = "./ai-worker.js?v=teaching-hint-20260911-1";
+const AI_WORKER_URL = "./ai-worker.js?v=cultivation-20260911-1";
 
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
@@ -580,10 +580,10 @@ const difficultyMenu = document.getElementById("difficultyMenu");
 const difficultyItems = Array.from(document.querySelectorAll(".difficulty-item"));
 
 const DIFFICULTY_NAMES = {
-  rookie: "菜鸟",
-  beginner: "新手",
-  expert: "专家",
-  master: "大师"
+  rookie: "练气",
+  beginner: "筑基",
+  expert: "结丹",
+  master: "元婴"
 };
 
 let difficulty = localStorage.getItem("gomokuDifficulty") || "beginner";
@@ -738,7 +738,11 @@ function unlockAudioFromGesture() {
 }
 
 function teachingAvailable() {
-  return difficulty === "rookie" || difficulty === "beginner";
+  return (
+    difficulty === "rookie" ||
+    difficulty === "beginner" ||
+    difficulty === "expert"
+  );
 }
 
 function clearHints(redraw = true) {
@@ -769,7 +773,7 @@ function updateHintButton() {
   hintBtn.textContent =
     hintThinking
       ? "✦ 分析中..."
-      : "✦ 大师提示";
+      : "✦ 元婴指导";
 }
 
 function setStatus(text, cls = "") {
@@ -1278,7 +1282,7 @@ function handleWorkerMessage(event) {
     }
 
     setStatus(
-      "大师提示分析中 · " +
+      "元婴指导分析中 · " +
       data.simulations +
       " 次搜索",
       "ai"
@@ -1320,7 +1324,7 @@ function handleWorkerMessage(event) {
         );
 
       setStatus(
-        "大师提示：① " +
+        "元婴指导：① " +
         p1 +
         "% · ② " +
         p2 +
@@ -1332,7 +1336,7 @@ function handleWorkerMessage(event) {
 
     } else if (hintMoves.length === 1) {
       setStatus(
-        "大师提示：" +
+        "元婴指导：" +
         (hintMoves[0].reason || "唯一强制落点"),
         "ai"
       );
@@ -1389,7 +1393,12 @@ function handleWorkerMessage(event) {
 
     currentPlayer = HUMAN;
     aiThinking = false;
-    setStatus((data.stopReason || "AI 已完成落子"), "ai");
+
+    setStatus(
+      DIFFICULTY_NAMES[difficulty] + "完成落子 · 轮到你",
+      "ai"
+    );
+
     updateButtons();
     return;
   }
@@ -1404,7 +1413,7 @@ function handleWorkerMessage(event) {
     hintThinking = false;
     playErrorSound();
     setStatus(
-      "大师提示失败：" +
+      "元婴指导失败：" +
       (data.message || "未知错误"),
       "error"
     );
@@ -1443,7 +1452,7 @@ function requestMasterHint() {
   updateButtons();
 
   setStatus(
-    "大师正在分析当前局面...",
+    "元婴正在分析当前局面...",
     "ai"
   );
 
