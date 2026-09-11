@@ -1,12 +1,17 @@
 "use strict";
 
 /*
-  ai-worker.js — Four Difficulty / Dark Dropdown Edition
+  ai-worker.js — Five Realms Edition
   ------------------------------------------------------------
-  rookie   练气 : Policy 前3名随机
-  beginner 筑基 : Policy Top1
-  expert   结丹 : 一步必赢/必堵 + MCTS20
-  master   元婴 : 一步必赢/必堵 + Adaptive 50->100->150\n  hint          : 练气/筑基/结丹可按需调用元婴分析并返回前2推荐
+  练气 / 筑基 / 结丹 / 元婴 / 化神
+
+  化神内部：
+      一步必赢 / 必堵
+      + 有界 VCT/VCF 威胁搜索
+      + Adaptive MCTS 50 -> 100 -> 150 回退
+
+  练气 / 筑基 / 结丹 / 元婴均可按需调用“化神指导”。
+  玩家界面不显示这些底层策略。
 */
 
 const SIZE = 15;
@@ -19,7 +24,7 @@ const ORT_BASE =
   "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/";
 
 const MODEL_URL =
-  "./gomoku_uint8_qop_u8u8.onnx?v=cultivation-20260911-1";
+  "./gomoku_uint8_qop_u8u8.onnx?v=five-realms-vct-20260911-1";
 
 const CPUCT = 0.8;
 
@@ -50,6 +55,21 @@ const DIFFICULTIES = {
     earlyRatio: 2.00,
     midRatio: 1.35,
     blockChance: 1.0
+  },
+
+  deity: {
+    label: "化神",
+    type: "vct-adaptive",
+    stages: [50, 100, 150],
+    earlyShare: 0.60,
+    earlyRatio: 2.00,
+    midRatio: 1.35,
+    blockChance: 1.0,
+    vctMaxAttacks: 5,
+    vctNodeLimit: 5000,
+    vctTimeLimitMs: 90,
+    vctMaxAttackCandidates: 18,
+    vctMaxDefenseCandidates: 18
   }
 };
 
@@ -344,6 +364,842 @@ async function top1PolicySearch(relativeBoard, cfg) {
     stopReason: cfg.label + "完成落子",
     source: "policy-top1"
   };
+}
+
+
+/* =========================================================
+   安全有界 VCT / VCF 威胁搜索
+
+   说明：
+   - 不调用旧 C++ vct-worker.js。
+   - 只在 Web Worker 中运行，不阻塞 UI。
+   - 有节点数与时间上限，避免手机端长时间卡住。
+   - 强项是连续冲四、双四，以及部分连续活三威胁。
+   - 找不到“已证明的强制线路”时，不强行判断，
+     直接回退到原来的 Adaptive MCTS。
+   ========================================================= */
+
+function listWinningMoves(board, stone, maxCount = 3) {
+  const wins = [];
+  const candidates =
+    nearbyEmptyMoves(board, 1);
+
+  for (const i of candidates) {
+    if (board[i] !== 0) {
+      continue;
+    }
+
+    board[i] = stone;
+
+    if (hasFiveAt(board, i, stone)) {
+      wins.push(i);
+    }
+
+    board[i] = 0;
+
+    if (wins.length >= maxCount) {
+      break;
+    }
+  }
+
+  return wins;
+}
+
+function nearbyEmptyMoves(board, radius = 2) {
+  const mark = new Uint8Array(CELLS);
+  let stoneCount = 0;
+
+  for (let i = 0; i < CELLS; i++) {
+    if (board[i] === 0) {
+      continue;
+    }
+
+    stoneCount++;
+
+    const r =
+      Math.floor(i / SIZE);
+
+    const c =
+      i % SIZE;
+
+    for (let dr = -radius; dr <= radius; dr++) {
+      for (let dc = -radius; dc <= radius; dc++) {
+        const rr = r + dr;
+        const cc = c + dc;
+
+        if (
+          rr < 0 || rr >= SIZE ||
+          cc < 0 || cc >= SIZE
+        ) {
+          continue;
+        }
+
+        const j =
+          rr * SIZE + cc;
+
+        if (board[j] === 0) {
+          mark[j] = 1;
+        }
+      }
+    }
+  }
+
+  if (stoneCount === 0) {
+    return [
+      Math.floor(SIZE / 2) * SIZE +
+      Math.floor(SIZE / 2)
+    ];
+  }
+
+  const moves = [];
+
+  for (let i = 0; i < CELLS; i++) {
+    if (mark[i]) {
+      moves.push(i);
+    }
+  }
+
+  return moves;
+}
+
+function localThreatScore(board, move, stone) {
+  board[move] = stone;
+
+  if (hasFiveAt(board, move, stone)) {
+    board[move] = 0;
+    return 1000000;
+  }
+
+  const r =
+    Math.floor(move / SIZE);
+
+  const c =
+    move % SIZE;
+
+  let score = 0;
+
+  for (const [dr, dc] of DIRS) {
+    let left = 0;
+    let right = 0;
+    let openLeft = 0;
+    let openRight = 0;
+
+    for (let s = 1; s <= 4; s++) {
+      const rr = r - dr * s;
+      const cc = c - dc * s;
+
+      if (
+        rr < 0 || rr >= SIZE ||
+        cc < 0 || cc >= SIZE
+      ) {
+        break;
+      }
+
+      const v =
+        board[rr * SIZE + cc];
+
+      if (v === stone) {
+        left++;
+      } else {
+        if (v === 0) {
+          openLeft = 1;
+        }
+        break;
+      }
+    }
+
+    for (let s = 1; s <= 4; s++) {
+      const rr = r + dr * s;
+      const cc = c + dc * s;
+
+      if (
+        rr < 0 || rr >= SIZE ||
+        cc < 0 || cc >= SIZE
+      ) {
+        break;
+      }
+
+      const v =
+        board[rr * SIZE + cc];
+
+      if (v === stone) {
+        right++;
+      } else {
+        if (v === 0) {
+          openRight = 1;
+        }
+        break;
+      }
+    }
+
+    const len =
+      1 + left + right;
+
+    const opens =
+      openLeft + openRight;
+
+    if (len >= 4) {
+      score +=
+        10000 + opens * 1000;
+    } else if (len === 3) {
+      score +=
+        1000 + opens * 250;
+    } else if (len === 2) {
+      score +=
+        160 + opens * 40;
+    } else {
+      score +=
+        12 + opens * 3;
+    }
+  }
+
+  board[move] = 0;
+
+  return score;
+}
+
+/*
+  返回“这一手参与形成的活三/跳三”的关键防守点。
+  只匹配常见 VCT 三类：
+      .XXX.
+      .X.XX.
+      .XX.X.
+  其中 X 为攻击方，. 为空位。
+*/
+function openThreeDefenseMoves(board, move) {
+  const result = new Set();
+  const mr = Math.floor(move / SIZE);
+  const mc = move % SIZE;
+  const patterns = [
+    "01110",
+    "010110",
+    "011010"
+  ];
+
+  for (const [dr, dc] of DIRS) {
+    const vals = [];
+    const ids = [];
+
+    for (let k = -4; k <= 4; k++) {
+      const r = mr + dr * k;
+      const c = mc + dc * k;
+
+      if (
+        r < 0 || r >= SIZE ||
+        c < 0 || c >= SIZE
+      ) {
+        vals.push("2");
+        ids.push(-1);
+        continue;
+      }
+
+      const id = r * SIZE + c;
+      ids.push(id);
+
+      const v = board[id];
+      vals.push(
+        v === 1 ? "1" :
+        v === 0 ? "0" : "2"
+      );
+    }
+
+    const line = vals.join("");
+
+    for (const pat of patterns) {
+      for (
+        let s = 0;
+        s + pat.length <= line.length;
+        s++
+      ) {
+        if (
+          line.slice(s, s + pat.length) !== pat
+        ) {
+          continue;
+        }
+
+        /* 当前落子在9格窗口中的位置固定为4。 */
+        if (!(s <= 4 && 4 < s + pat.length)) {
+          continue;
+        }
+
+        if (pat[4 - s] !== "1") {
+          continue;
+        }
+
+        for (let j = 0; j < pat.length; j++) {
+          if (pat[j] !== "0") {
+            continue;
+          }
+
+          const id = ids[s + j];
+
+          if (
+            id >= 0 &&
+            board[id] === 0
+          ) {
+            result.add(id);
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(result);
+}
+
+function vctAttackCandidates(board, ctx) {
+  const moves =
+    nearbyEmptyMoves(board, 2);
+
+  const items = [];
+
+  for (const move of moves) {
+    if (board[move] !== 0) {
+      continue;
+    }
+
+    const score =
+      localThreatScore(
+        board,
+        move,
+        1
+      );
+
+    board[move] = 1;
+
+    let kind = 0;
+
+    if (hasFiveAt(board, move, 1)) {
+      kind = 4;
+    } else {
+      const oppWins =
+        listWinningMoves(
+          board,
+          -1,
+          1
+        );
+
+      if (oppWins.length === 0) {
+        const ownWins =
+          listWinningMoves(
+            board,
+            1,
+            3
+          );
+
+        if (ownWins.length >= 2) {
+          kind = 3; // 双四 / 开四
+        } else if (ownWins.length === 1) {
+          kind = 2; // 冲四
+        } else {
+          const defenses =
+            openThreeDefenseMoves(
+              board,
+              move
+            );
+
+          if (defenses.length >= 2) {
+            kind = 1; // 活三 / 跳三
+          }
+        }
+      }
+    }
+
+    board[move] = 0;
+
+    if (kind > 0) {
+      items.push({
+        move,
+        kind,
+        score
+      });
+    }
+  }
+
+  items.sort((a, b) => {
+    if (b.kind !== a.kind) {
+      return b.kind - a.kind;
+    }
+
+    return b.score - a.score;
+  });
+
+  return items.slice(
+    0,
+    ctx.maxAttackCandidates
+  );
+}
+
+function vctRelevantDefenseMoves(
+  board,
+  lastAttackMove,
+  ctx
+) {
+  const defenses =
+    openThreeDefenseMoves(
+      board,
+      lastAttackMove
+    );
+
+  const items =
+    defenses.map((move) => ({
+      move,
+      score:
+        localThreatScore(
+          board,
+          move,
+          -1
+        )
+    }));
+
+  items.sort(
+    (a, b) => b.score - a.score
+  );
+
+  return items
+    .slice(
+      0,
+      ctx.maxDefenseCandidates
+    )
+    .map((x) => x.move);
+}
+
+function vctBudgetExceeded(ctx) {
+  if (ctx.nodes >= ctx.nodeLimit) {
+    ctx.cutoff = true;
+    return true;
+  }
+
+  if (
+    performance.now() -
+      ctx.started >=
+    ctx.timeLimitMs
+  ) {
+    ctx.cutoff = true;
+    return true;
+  }
+
+  return false;
+}
+
+function proveVCTFromAttackerTurn(
+  board,
+  attacksLeft,
+  ctx,
+  path
+) {
+  ctx.nodes++;
+
+  if (vctBudgetExceeded(ctx)) {
+    return null;
+  }
+
+  /*
+    轮到攻击方时，若已有一步胜，直接成立。
+  */
+  const directWins =
+    listWinningMoves(
+      board,
+      1,
+      2
+    );
+
+  if (directWins.length > 0) {
+    return {
+      win: true,
+      path:
+        path.concat(
+          directWins[0]
+        )
+    };
+  }
+
+  /*
+    如果对手已经有一步胜，而攻击方自己没有一步胜，
+    当前强制攻击不成立。
+  */
+  const oppDirectWins =
+    listWinningMoves(
+      board,
+      -1,
+      1
+    );
+
+  if (oppDirectWins.length > 0) {
+    return {
+      win: false,
+      path
+    };
+  }
+
+  if (attacksLeft <= 0) {
+    return {
+      win: false,
+      path
+    };
+  }
+
+  const candidates =
+    vctAttackCandidates(
+      board,
+      ctx
+    );
+
+  for (const item of candidates) {
+    if (vctBudgetExceeded(ctx)) {
+      return null;
+    }
+
+    const move =
+      item.move;
+
+    board[move] = 1;
+
+    if (
+      hasFiveAt(
+        board,
+        move,
+        1
+      )
+    ) {
+      board[move] = 0;
+
+      return {
+        win: true,
+        path:
+          path.concat(move)
+      };
+    }
+
+    /*
+      对方如果现在有一步胜，可以直接反杀，
+      所以这条攻击线路失败。
+    */
+    const defenderWins =
+      listWinningMoves(
+        board,
+        -1,
+        1
+      );
+
+    if (defenderWins.length > 0) {
+      board[move] = 0;
+      continue;
+    }
+
+    const attackerWins =
+      listWinningMoves(
+        board,
+        1,
+        3
+      );
+
+    /*
+      两个或更多一步胜点：
+      对方一手无法全部封住，视为已证明强制胜。
+    */
+    if (attackerWins.length >= 2) {
+      board[move] = 0;
+
+      return {
+        win: true,
+        path:
+          path.concat(move)
+      };
+    }
+
+    /*
+      单一冲四：
+      防守方只有一个必堵点。
+    */
+    if (attackerWins.length === 1) {
+      const defense =
+        attackerWins[0];
+
+      board[defense] = -1;
+
+      let child;
+
+      if (
+        hasFiveAt(
+          board,
+          defense,
+          -1
+        )
+      ) {
+        child = {
+          win: false,
+          path
+        };
+      } else {
+        child =
+          proveVCTFromAttackerTurn(
+            board,
+            attacksLeft - 1,
+            ctx,
+            path.concat(
+              move,
+              defense
+            )
+          );
+      }
+
+      board[defense] = 0;
+      board[move] = 0;
+
+      if (child === null) {
+        return null;
+      }
+
+      if (child.win) {
+        return child;
+      }
+
+      continue;
+    }
+
+    /*
+      VCT 活三级：
+      枚举有限的关键防点。
+      只有所有关键防守都挡不住，才认定该攻击成立。
+    */
+    if (item.kind === 1) {
+      const defenses =
+        vctRelevantDefenseMoves(
+          board,
+          move,
+          ctx
+        );
+
+      if (defenses.length > 0) {
+        let allLose = true;
+        let bestPath = null;
+
+        for (const defense of defenses) {
+          if (vctBudgetExceeded(ctx)) {
+            board[move] = 0;
+            return null;
+          }
+
+          if (board[defense] !== 0) {
+            continue;
+          }
+
+          board[defense] = -1;
+
+          if (
+            hasFiveAt(
+              board,
+              defense,
+              -1
+            )
+          ) {
+            allLose = false;
+            board[defense] = 0;
+            break;
+          }
+
+          const child =
+            proveVCTFromAttackerTurn(
+              board,
+              attacksLeft - 1,
+              ctx,
+              path.concat(
+                move,
+                defense
+              )
+            );
+
+          board[defense] = 0;
+
+          if (child === null) {
+            board[move] = 0;
+            return null;
+          }
+
+          if (!child.win) {
+            allLose = false;
+            break;
+          }
+
+          if (!bestPath) {
+            bestPath =
+              child.path;
+          }
+        }
+
+        board[move] = 0;
+
+        if (allLose && bestPath) {
+          return {
+            win: true,
+            path: bestPath
+          };
+        }
+
+        continue;
+      }
+    }
+
+    board[move] = 0;
+  }
+
+  return {
+    win: false,
+    path
+  };
+}
+
+function findVCTMove(relativeBoard, cfg) {
+  const started =
+    performance.now();
+
+  const ctx = {
+    started,
+    nodes: 0,
+    cutoff: false,
+    nodeLimit:
+      cfg.vctNodeLimit || 5000,
+    timeLimitMs:
+      cfg.vctTimeLimitMs || 90,
+    maxAttackCandidates:
+      cfg.vctMaxAttackCandidates || 18,
+    maxDefenseCandidates:
+      cfg.vctMaxDefenseCandidates || 18
+  };
+
+  const board =
+    relativeBoard.slice();
+
+  const result =
+    proveVCTFromAttackerTurn(
+      board,
+      cfg.vctMaxAttacks || 5,
+      ctx,
+      []
+    );
+
+  const elapsedMs =
+    performance.now() -
+    started;
+
+  if (
+    result &&
+    result.win &&
+    result.path.length > 0
+  ) {
+    return {
+      found: true,
+      move:
+        result.path[0],
+      path:
+        result.path,
+      nodes:
+        ctx.nodes,
+      cutoff:
+        ctx.cutoff,
+      elapsedMs
+    };
+  }
+
+  return {
+    found: false,
+    move: -1,
+    path: [],
+    nodes:
+      ctx.nodes,
+    cutoff:
+      ctx.cutoff,
+    elapsedMs
+  };
+}
+
+async function deitySearch(
+  relativeBoard,
+  searchId,
+  cfg
+) {
+  const started =
+    performance.now();
+
+  /*
+    最高优先级仍是一步必赢 / 必堵。
+  */
+  const rule =
+    immediateRule(
+      relativeBoard,
+      1.0
+    );
+
+  if (rule) {
+    return {
+      move: rule.move,
+      simulations: 0,
+      nnEvals: 0,
+      rootValue: null,
+      elapsedMs:
+        performance.now() - started,
+      stopReason:
+        cfg.label + "完成落子",
+      source: "rule",
+      vctFound: false,
+      vctNodes: 0
+    };
+  }
+
+  /*
+    然后尝试有界强制杀搜索。
+  */
+  const vct =
+    findVCTMove(
+      relativeBoard,
+      cfg
+    );
+
+  if (vct.found) {
+    return {
+      move:
+        vct.move,
+      simulations:
+        vct.nodes,
+      nnEvals: 0,
+      rootValue: null,
+      elapsedMs:
+        performance.now() - started,
+      stopReason:
+        cfg.label + "完成落子",
+      source: "vct",
+      vctFound: true,
+      vctNodes:
+        vct.nodes,
+      vctPath:
+        vct.path
+    };
+  }
+
+  /*
+    没有在预算内找到强制杀，就回退到元婴 MCTS。
+  */
+  const mcts =
+    await adaptiveSearch(
+      relativeBoard,
+      searchId,
+      cfg
+    );
+
+  mcts.elapsedMs =
+    performance.now() - started;
+
+  mcts.source =
+    "vct-fallback-mcts";
+
+  mcts.vctFound =
+    false;
+
+  mcts.vctNodes =
+    vct.nodes;
+
+  return mcts;
 }
 
 class Node {
@@ -697,17 +1553,24 @@ function buildHintCandidates(tree, forcedRule = null) {
   return candidates;
 }
 
-async function masterHintSearch(relativeBoard, hintId) {
+async function deityHintSearch(
+  relativeBoard,
+  hintId
+) {
   const started =
     performance.now();
 
-  const cfg =
+  const deityCfg =
+    DIFFICULTIES.deity;
+
+  const masterCfg =
     DIFFICULTIES.master;
 
   /*
-    教学提示仍使用元婴搜索。
-    即便存在一步必赢/必堵，也继续建立 MCTS 树，
-    这样可以额外给出第二候选；第一候选由规则强制置顶。
+    化神指导：
+    1) 一步必赢 / 必堵
+    2) 有界 VCT/VCF
+    3) 元婴级 Adaptive MCTS 作为第二判断来源
   */
   const forcedRule =
     immediateRule(
@@ -715,17 +1578,39 @@ async function masterHintSearch(relativeBoard, hintId) {
       1.0
     );
 
+  let vct = {
+    found: false,
+    move: -1,
+    path: [],
+    nodes: 0,
+    elapsedMs: 0
+  };
+
+  if (!forcedRule) {
+    vct =
+      findVCTMove(
+        relativeBoard,
+        deityCfg
+      );
+  }
+
+  /*
+    指导仍运行 MCTS，
+    这样即使存在强制点，也可以给出第二候选。
+  */
   const tree =
-    new SearchTree(relativeBoard);
+    new SearchTree(
+      relativeBoard
+    );
 
   const s1Target =
-    cfg.stages[0];
+    masterCfg.stages[0];
 
   const s2Target =
-    cfg.stages[1];
+    masterCfg.stages[1];
 
   const s3Target =
-    cfg.stages[2];
+    masterCfg.stages[2];
 
   await tree.runUntil(
     s1Target,
@@ -736,91 +1621,115 @@ async function masterHintSearch(relativeBoard, hintId) {
   let stats =
     tree.rootStats();
 
-  let stopReason =
-    "元婴指导 · 50次";
+  let finished =
+    false;
 
   if (
     !forcedRule &&
-    stats.share >= cfg.earlyShare &&
-    stats.ratio >= cfg.earlyRatio
+    !vct.found &&
+    stats.share >=
+      masterCfg.earlyShare &&
+    stats.ratio >=
+      masterCfg.earlyRatio
   ) {
-    return {
-      candidates:
-        buildHintCandidates(
-          tree,
-          null
-        ),
-      simulations:
-        tree.simulations,
-      nnEvals:
-        tree.nnEvals,
-      rootValue:
-        tree.rootValue,
-      elapsedMs:
-        performance.now() - started,
-      stopReason
-    };
+    finished = true;
   }
 
   const move50 =
     stats.bestMove;
 
-  await tree.runUntil(
-    s2Target,
-    hintId,
-    "hint-progress"
-  );
+  if (!finished) {
+    await tree.runUntil(
+      s2Target,
+      hintId,
+      "hint-progress"
+    );
 
-  stats =
-    tree.rootStats();
+    stats =
+      tree.rootStats();
 
-  const stable =
-    stats.bestMove === move50;
+    const stable =
+      stats.bestMove ===
+      move50;
 
-  stopReason =
-    "元婴指导 · 100次";
-
-  if (
-    !forcedRule &&
-    stable &&
-    stats.ratio >= cfg.midRatio
-  ) {
-    return {
-      candidates:
-        buildHintCandidates(
-          tree,
-          null
-        ),
-      simulations:
-        tree.simulations,
-      nnEvals:
-        tree.nnEvals,
-      rootValue:
-        tree.rootValue,
-      elapsedMs:
-        performance.now() - started,
-      stopReason
-    };
+    if (
+      !forcedRule &&
+      !vct.found &&
+      stable &&
+      stats.ratio >=
+        masterCfg.midRatio
+    ) {
+      finished = true;
+    }
   }
 
-  await tree.runUntil(
-    s3Target,
-    hintId,
-    "hint-progress"
-  );
+  /*
+    强制规则 / VCT 命中时，
+    为了第二推荐更可靠，直接搜索到150。
+    普通局面则保持原来的 Adaptive 行为。
+  */
+  if (
+    !finished &&
+    tree.simulations <
+      s3Target
+  ) {
+    await tree.runUntil(
+      s3Target,
+      hintId,
+      "hint-progress"
+    );
+  }
 
-  stopReason =
-    forcedRule
-      ? "元婴指导 · " +
-        forcedRule.reason
-      : "元婴指导 · 150次";
+  let candidates;
 
-  return {
-    candidates:
+  if (
+    forcedRule &&
+    forcedRule.move >= 0
+  ) {
+    candidates =
       buildHintCandidates(
         tree,
         forcedRule
-      ),
+      );
+
+  } else if (
+    vct.found &&
+    vct.move >= 0
+  ) {
+    candidates = [{
+      move:
+        vct.move,
+      prob: 1.0,
+      forced: true,
+      reason: "强制"
+    }];
+
+    const second =
+      tree.topRootChildren(
+        1,
+        vct.move
+      )[0];
+
+    if (second) {
+      candidates.push({
+        move:
+          second.move,
+        prob: 0.0,
+        forced: false,
+        reason: "参考"
+      });
+    }
+
+  } else {
+    candidates =
+      buildHintCandidates(
+        tree,
+        null
+      );
+  }
+
+  return {
+    candidates,
     simulations:
       tree.simulations,
     nnEvals:
@@ -828,8 +1737,16 @@ async function masterHintSearch(relativeBoard, hintId) {
     rootValue:
       tree.rootValue,
     elapsedMs:
-      performance.now() - started,
-    stopReason
+      performance.now() -
+      started,
+    stopReason:
+      "化神指导完成",
+    vctFound:
+      vct.found,
+    vctNodes:
+      vct.nodes,
+    vctPath:
+      vct.path
   };
 }
 
@@ -842,22 +1759,42 @@ async function searchByDifficulty(
     DIFFICULTIES[difficulty] ||
     DIFFICULTIES.beginner;
 
-  if (cfg.type === "policy-random-topk") {
+  if (
+    cfg.type ===
+    "policy-random-topk"
+  ) {
     return topKPolicySearch(
       relativeBoard,
       cfg
     );
   }
 
-  if (cfg.type === "policy-top1") {
+  if (
+    cfg.type ===
+    "policy-top1"
+  ) {
     return top1PolicySearch(
       relativeBoard,
       cfg
     );
   }
 
-  if (cfg.type === "fixed") {
+  if (
+    cfg.type ===
+    "fixed"
+  ) {
     return fixedSearch(
+      relativeBoard,
+      searchId,
+      cfg
+    );
+  }
+
+  if (
+    cfg.type ===
+    "vct-adaptive"
+  ) {
+    return deitySearch(
       relativeBoard,
       searchId,
       cfg
@@ -919,7 +1856,7 @@ self.onmessage = async (event) => {
         );
 
       const result =
-        await masterHintSearch(
+        await deityHintSearch(
           relative,
           hintId
         );
@@ -948,7 +1885,11 @@ self.onmessage = async (event) => {
         elapsedMs:
           result.elapsedMs,
         stopReason:
-          result.stopReason
+          result.stopReason,
+        vctFound:
+          !!result.vctFound,
+        vctNodes:
+          result.vctNodes || 0
       });
 
       return;
@@ -994,7 +1935,11 @@ self.onmessage = async (event) => {
       stopReason: result.stopReason,
       source: result.source,
       difficulty,
-      difficultyLabel: cfg.label
+      difficultyLabel: cfg.label,
+      vctFound:
+        !!result.vctFound,
+      vctNodes:
+        result.vctNodes || 0
     });
 
   } catch (error) {

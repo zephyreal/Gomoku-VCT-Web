@@ -504,6 +504,7 @@
           <button class="difficulty-item" data-difficulty="beginner" type="button">筑基</button>
           <button class="difficulty-item" data-difficulty="expert" type="button">结丹</button>
           <button class="difficulty-item" data-difficulty="master" type="button">元婴</button>
+          <button class="difficulty-item" data-difficulty="deity" type="button">化神</button>
         </div>
       </div>
       <div class="metric-sub">标准对局 · 15×15</div>
@@ -536,7 +537,7 @@
 
   <div class="status-row">
     <div id="status" class="status-line loading">正在加载 AI...</div>
-    <button id="hintBtn" class="hint-btn" type="button">✦ 元婴指导</button>
+    <button id="hintBtn" class="hint-btn" type="button">✦ 化神指导</button>
   </div>
 
   <div class="actions">
@@ -546,7 +547,7 @@
   </div>
 
   <div class="footnote">
-    🔊 落子与提示音 · 练气 / 筑基 / 结丹可使用“元婴指导”
+    🔊 落子与提示音 · 练气 / 筑基 / 结丹 / 元婴可使用“化神指导”
   </div>
 </div>
 
@@ -558,7 +559,7 @@ const EMPTY = 0;
 const HUMAN = 1;
 const AI = 2;
 
-const AI_WORKER_URL = "./ai-worker.js?v=cultivation-20260911-1";
+const AI_WORKER_URL = "./ai-worker.js?v=five-realms-vct-20260911-1";
 
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
@@ -583,7 +584,8 @@ const DIFFICULTY_NAMES = {
   rookie: "练气",
   beginner: "筑基",
   expert: "结丹",
-  master: "元婴"
+  master: "元婴",
+  deity: "化神"
 };
 
 let difficulty = localStorage.getItem("gomokuDifficulty") || "beginner";
@@ -741,7 +743,8 @@ function teachingAvailable() {
   return (
     difficulty === "rookie" ||
     difficulty === "beginner" ||
-    difficulty === "expert"
+    difficulty === "expert" ||
+    difficulty === "master"
   );
 }
 
@@ -773,7 +776,7 @@ function updateHintButton() {
   hintBtn.textContent =
     hintThinking
       ? "✦ 分析中..."
-      : "✦ 元婴指导";
+      : "✦ 化神指导";
 }
 
 function setStatus(text, cls = "") {
@@ -1282,7 +1285,7 @@ function handleWorkerMessage(event) {
     }
 
     setStatus(
-      "元婴指导分析中 · " +
+      "化神指导分析中 · " +
       data.simulations +
       " 次搜索",
       "ai"
@@ -1324,7 +1327,7 @@ function handleWorkerMessage(event) {
         );
 
       setStatus(
-        "元婴指导：① " +
+        "化神指导：① " +
         p1 +
         "% · ② " +
         p2 +
@@ -1336,7 +1339,7 @@ function handleWorkerMessage(event) {
 
     } else if (hintMoves.length === 1) {
       setStatus(
-        "元婴指导：" +
+        "化神指导：" +
         (hintMoves[0].reason || "唯一强制落点"),
         "ai"
       );
@@ -1413,7 +1416,7 @@ function handleWorkerMessage(event) {
     hintThinking = false;
     playErrorSound();
     setStatus(
-      "元婴指导失败：" +
+      "化神指导失败：" +
       (data.message || "未知错误"),
       "error"
     );
@@ -1452,7 +1455,7 @@ function requestMasterHint() {
   updateButtons();
 
   setStatus(
-    "元婴正在分析当前局面...",
+    "化神正在分析当前局面...",
     "ai"
   );
 
