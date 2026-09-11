@@ -65,7 +65,7 @@
 
     .app {
       width: min(100%, 760px);
-      padding: 18px 14px 28px;
+      padding: 10px 9px 14px;
       position: relative;
       z-index: 1;
     }
@@ -74,8 +74,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 14px;
+      gap: 10px;
+      margin-bottom: 7px;
     }
 
     .brand-wrap { min-width: 0; }
@@ -83,7 +83,7 @@
     .brand {
       margin: 0;
       letter-spacing: .04em;
-      font-size: clamp(25px, 5vw, 36px);
+      font-size: clamp(22px, 4.5vw, 30px);
       font-weight: 780;
       line-height: 1.1;
     }
@@ -96,9 +96,9 @@
     }
 
     .brand-sub {
-      margin-top: 6px;
+      margin-top: 2px;
       color: var(--muted);
-      font-size: 12px;
+      font-size: 9px;
       letter-spacing: .08em;
     }
 
@@ -126,118 +126,12 @@
     }
 
     .hero {
-      position: relative;
-      overflow: hidden;
-      border-radius: 22px;
-      padding: 16px;
-      margin-bottom: 14px;
-      background:
-        linear-gradient(135deg,
-          rgba(18,40,68,.92),
-          rgba(9,23,40,.82));
-      border: 1px solid var(--line-strong);
-      box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.06),
-        0 20px 60px rgba(0,0,0,.24);
-    }
-
-    .hero::after {
-      content: "";
-      position: absolute;
-      width: 190px;
-      height: 190px;
-      right: -65px;
-      top: -80px;
-      border-radius: 50%;
-      background:
-        radial-gradient(circle,
-          rgba(63,180,255,.28),
-          rgba(42,112,255,.07) 46%,
-          transparent 70%);
-      filter: blur(3px);
-      pointer-events: none;
-    }
-
-    .hero-main {
-      display: grid;
-      grid-template-columns: 70px minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 14px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .ai-orb {
-      width: 66px;
-      height: 66px;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      font-weight: 800;
-      font-size: 23px;
-      letter-spacing: .04em;
-      color: #dff7ff;
-      border: 1px solid rgba(90,210,255,.65);
-      background:
-        radial-gradient(circle at 35% 30%, rgba(94,220,255,.35), rgba(12,45,77,.72) 48%, #071320);
-      box-shadow:
-        inset 0 0 18px rgba(61,190,255,.25),
-        0 0 0 6px rgba(72,171,255,.07),
-        0 0 30px rgba(46,165,255,.25);
-    }
-
-    .hero-title {
-      margin: 0;
-      font-size: 19px;
-      font-weight: 760;
-    }
-
-    .hero-desc {
-      margin-top: 3px;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .ready {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      font-size: 12px;
-      color: var(--green);
-      letter-spacing: .08em;
-      font-weight: 720;
-    }
-
-    .ready-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 12px rgba(86,230,193,.8);
-    }
-
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px;
-      margin-top: 12px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .chip {
-      padding: 5px 9px;
-      border-radius: 999px;
-      color: #a9c2dc;
-      font-size: 11px;
-      letter-spacing: .03em;
-      border: 1px solid rgba(145,190,236,.20);
-      background: rgba(6,15,27,.34);
+      display: none;
     }
 
     .board-shell {
-      padding: 8px;
-      border-radius: 24px;
+      padding: 5px;
+      border-radius: 18px;
       background:
         linear-gradient(180deg,
           rgba(40,67,94,.38),
@@ -247,8 +141,8 @@
     }
 
     .board-inner {
-      padding: 9px;
-      border-radius: 18px;
+      padding: 4px;
+      border-radius: 14px;
       background:
         linear-gradient(135deg,
           #e1b46d,
@@ -269,33 +163,35 @@
     }
 
     .metrics {
-      margin-top: 14px;
+      margin: 0 0 7px;
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 9px;
+      grid-template-columns: 1.25fr 1fr .85fr 1fr;
+      gap: 5px;
     }
 
     .metric {
       min-width: 0;
-      padding: 11px 10px;
-      border-radius: 15px;
-      background: var(--panel-2);
-      border: 1px solid var(--line);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+      padding: 7px 7px 6px;
+      border-radius: 11px;
+      background: rgba(15, 31, 52, .68);
+      border: 1px solid rgba(133,190,255,.14);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
     }
 
     .metric-label {
       color: var(--muted);
-      font-size: 10px;
-      letter-spacing: .05em;
+      font-size: 8px;
+      line-height: 1.1;
+      letter-spacing: .02em;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     .metric-value {
-      margin-top: 4px;
-      font-size: 16px;
+      margin-top: 2px;
+      font-size: 12px;
+      line-height: 1.15;
       font-weight: 730;
       color: #f5f9ff;
       white-space: nowrap;
@@ -304,24 +200,25 @@
     }
 
     .metric-sub {
-      margin-top: 2px;
+      margin-top: 1px;
       color: #6f86a0;
-      font-size: 9px;
+      font-size: 7px;
+      line-height: 1.1;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     .status-line {
-      margin-top: 11px;
-      min-height: 42px;
+      margin-top: 6px;
+      min-height: 32px;
       display: flex;
       justify-content: center;
       align-items: center;
       text-align: center;
-      padding: 8px 12px;
-      border-radius: 14px;
-      font-size: 14px;
+      padding: 5px 10px;
+      border-radius: 10px;
+      font-size: 12px;
       font-weight: 690;
       color: #dfeeff;
       background: rgba(8,19,33,.68);
@@ -336,15 +233,15 @@
     .actions {
       display: grid;
       grid-template-columns: 1fr 1.2fr 1fr;
-      gap: 10px;
-      margin-top: 12px;
+      gap: 6px;
+      margin-top: 7px;
     }
 
     button {
-      min-height: 48px;
+      min-height: 40px;
       border: 1px solid rgba(134,181,228,.20);
-      border-radius: 15px;
-      font-size: 14px;
+      border-radius: 11px;
+      font-size: 12px;
       font-weight: 700;
       color: #dcecff;
       cursor: pointer;
@@ -379,70 +276,132 @@
         0 0 24px rgba(49,164,255,.14);
     }
 
+    .difficulty-select {
+      width: 100%;
+      margin-top: 1px;
+      padding: 0;
+      border: 0;
+      outline: 0;
+      appearance: none;
+      -webkit-appearance: none;
+      background: transparent;
+      color: #f5f9ff;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 730;
+      cursor: pointer;
+    }
+
+    .difficulty-select option {
+      color: #111;
+      background: #fff;
+    }
+
+    .difficulty-wrap {
+      position: relative;
+    }
+
+    .difficulty-wrap::after {
+      content: "⌄";
+      position: absolute;
+      right: 0;
+      top: 3px;
+      color: #58d6ff;
+      font-size: 15px;
+      pointer-events: none;
+    }
+
     .footnote {
-      margin-top: 14px;
+      margin-top: 6px;
       text-align: center;
-      color: #607994;
-      font-size: 10px;
-      line-height: 1.6;
+      color: #526981;
+      font-size: 8px;
+      line-height: 1.35;
       letter-spacing: .04em;
     }
 
     @media (max-width: 560px) {
-      .app { padding: 12px 9px 22px; }
-      .topbar { margin-bottom: 10px; }
+      .app {
+        padding: 7px 6px 9px;
+      }
+
+      .topbar {
+        margin-bottom: 5px;
+      }
+
+      .brand {
+        font-size: 21px;
+      }
+
+      .brand-sub {
+        display: none;
+      }
 
       .engine-dot {
-        padding: 7px 9px;
-        font-size: 10px;
-      }
-
-      .hero {
-        padding: 13px;
-        border-radius: 18px;
-      }
-
-      .hero-main {
-        grid-template-columns: 58px minmax(0, 1fr) auto;
-        gap: 10px;
-      }
-
-      .ai-orb {
-        width: 54px;
-        height: 54px;
-        font-size: 19px;
-      }
-
-      .hero-title { font-size: 17px; }
-      .hero-desc { font-size: 11px; }
-      .chip { font-size: 10px; }
-
-      .board-shell {
-        padding: 6px;
-        border-radius: 19px;
-      }
-
-      .board-inner {
-        padding: 6px;
-        border-radius: 15px;
+        padding: 5px 7px;
+        font-size: 8px;
       }
 
       .metrics {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: 1.25fr 1fr .85fr 1fr;
+        gap: 4px;
+        margin-bottom: 5px;
       }
 
       .metric {
-        padding: 9px 10px;
+        padding: 5px 5px 4px;
+        border-radius: 9px;
+      }
+
+      .metric-label {
+        font-size: 7px;
+      }
+
+      .metric-value,
+      .difficulty-select {
+        font-size: 11px;
+      }
+
+      .metric-sub {
+        font-size: 6px;
+      }
+
+      .difficulty-wrap::after {
+        font-size: 11px;
+        top: 0;
+      }
+
+      .board-shell {
+        padding: 4px;
+        border-radius: 15px;
+      }
+
+      .board-inner {
+        padding: 3px;
+        border-radius: 12px;
+      }
+
+      .status-line {
+        margin-top: 5px;
+        min-height: 29px;
+        font-size: 11px;
+        padding: 4px 8px;
       }
 
       .actions {
-        gap: 7px;
+        gap: 5px;
+        margin-top: 5px;
       }
 
       button {
-        min-height: 46px;
-        font-size: 13px;
-        padding: 0 7px;
+        min-height: 37px;
+        font-size: 11px;
+        padding: 0 5px;
+      }
+
+      .footnote {
+        margin-top: 5px;
+        font-size: 7px;
       }
     }
   </style>
@@ -454,7 +413,7 @@
   <header class="topbar">
     <div class="brand-wrap">
       <h1 class="brand">五子棋 <span>AI</span></h1>
-      <div class="brand-sub">ADAPTIVE SEARCH ENGINE</div>
+      <div class="brand-sub">标准对局 · 15×15</div>
     </div>
 
     <div class="engine-dot">
@@ -463,42 +422,18 @@
     </div>
   </header>
 
-  <section class="hero">
-    <div class="hero-main">
-      <div class="ai-orb">AI</div>
-
-      <div>
-        <div class="hero-title" id="heroTitle">AI 正在初始化</div>
-        <div class="hero-desc" id="heroDesc">
-          正在建立本地 WASM 推理会话
-        </div>
-      </div>
-
-      <div class="ready">
-        <span class="ready-dot"></span>
-        READY
-      </div>
-    </div>
-
-    <div class="chips">
-      <span class="chip">UINT8</span>
-      <span class="chip">WASM</span>
-      <span class="chip">147 KB</span>
-      <span class="chip">MCTS 50 / 100 / 150</span>
-    </div>
-  </section>
-
-  <section class="board-shell">
-    <div class="board-inner">
-      <canvas id="board"></canvas>
-    </div>
-  </section>
-
   <section class="metrics">
     <div class="metric">
       <div class="metric-label">当前模式</div>
-      <div class="metric-value">标准对局</div>
-      <div class="metric-sub">15 × 15</div>
+      <div class="difficulty-wrap">
+        <select id="difficultySelect" class="difficulty-select" aria-label="AI 难度">
+          <option value="rookie">菜鸟</option>
+          <option value="beginner" selected>新手</option>
+          <option value="expert">专家</option>
+          <option value="master">大师</option>
+        </select>
+      </div>
+      <div class="metric-sub">标准对局 · 15×15</div>
     </div>
 
     <div class="metric">
@@ -510,13 +445,19 @@
     <div class="metric">
       <div class="metric-label">搜索次数</div>
       <div class="metric-value" id="simsMetric">—</div>
-      <div class="metric-sub">adaptive MCTS</div>
+      <div class="metric-sub">search</div>
     </div>
 
     <div class="metric">
       <div class="metric-label">局面评估</div>
       <div class="metric-value" id="valueMetric">—</div>
-      <div class="metric-sub">AI perspective</div>
+      <div class="metric-sub">AI value</div>
+    </div>
+  </section>
+
+  <section class="board-shell">
+    <div class="board-inner">
+      <canvas id="board"></canvas>
     </div>
   </section>
 
@@ -529,8 +470,7 @@
   </div>
 
   <div class="footnote">
-    Rule + UINT8 Gen1 + Adaptive MCTS<br>
-    简单局面快速决策 · 困难局面自动加深
+    UINT8 · WASM · 147 KB · 大师模式 Adaptive MCTS 50/100/150
   </div>
 
 </div>
@@ -549,12 +489,11 @@ const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 
 const statusEl = document.getElementById("status");
-const heroTitleEl = document.getElementById("heroTitle");
-const heroDescEl = document.getElementById("heroDesc");
 
 const timeMetricEl = document.getElementById("timeMetric");
 const simsMetricEl = document.getElementById("simsMetric");
 const valueMetricEl = document.getElementById("valueMetric");
+const difficultySelect = document.getElementById("difficultySelect");
 
 const undoBtn = document.getElementById("undoBtn");
 const reloadBtn = document.getElementById("reloadBtn");
@@ -573,39 +512,29 @@ let aiReady = false;
 let lastAIValue = null;
 let pendingSearchId = 0;
 
+const DIFFICULTY_NAMES = {
+  rookie: "菜鸟",
+  beginner: "新手",
+  expert: "专家",
+  master: "大师"
+};
+
+let difficulty =
+  localStorage.getItem("gomokuDifficulty") || "beginner";
+
+if (!DIFFICULTY_NAMES[difficulty]) {
+  difficulty = "beginner";
+}
+
+difficultySelect.value = difficulty;
+
 function setStatus(text, cls = "") {
   statusEl.textContent = text;
   statusEl.className = "status-line";
   if (cls) statusEl.classList.add(cls);
 }
 
-function updateHero() {
-  if (!aiReady) {
-    heroTitleEl.textContent = "AI 正在初始化";
-    heroDescEl.textContent = "正在建立本地 WASM 推理会话";
-    return;
-  }
-
-  if (aiThinking) {
-    heroTitleEl.textContent = "AI 正在思考";
-    heroDescEl.textContent = "根据局面复杂度自适应调整搜索深度";
-    return;
-  }
-
-  if (gameOver) {
-    heroTitleEl.textContent = "本局已结束";
-    heroDescEl.textContent = "可以悔棋或重新开始";
-    return;
-  }
-
-  if (currentPlayer === HUMAN) {
-    heroTitleEl.textContent = "轮到你了";
-    heroDescEl.textContent = "你执黑棋 · AI 执白棋";
-  } else {
-    heroTitleEl.textContent = "AI 准备落子";
-    heroDescEl.textContent = "Adaptive MCTS 50 / 100 / 150";
-  }
-}
+function updateHero() {}
 
 function updateStatus() {
   updateHero();
@@ -707,8 +636,6 @@ function loadAIWorker() {
     aiReady = false;
     aiThinking = false;
     setStatus("AI Worker 加载失败", "error");
-    heroTitleEl.textContent = "AI 加载失败";
-    heroDescEl.textContent = event.message || "请检查模型文件";
     updateButtons();
   };
 
@@ -978,7 +905,8 @@ function normalAIMove() {
   aiWorker.postMessage({
     type: "search",
     searchId,
-    board: flat
+    board: flat,
+    difficulty
   }, [flat.buffer]);
 }
 
@@ -987,10 +915,6 @@ function handleWorkerMessage(event) {
 
   if (data.type === "ready") {
     aiReady = true;
-
-    heroTitleEl.textContent = "AI 已就绪";
-    heroDescEl.textContent =
-      "UINT8 · WASM · Adaptive MCTS 50/100/150";
 
     updateStatus();
     updateButtons();
@@ -1048,10 +972,6 @@ function handleWorkerMessage(event) {
         "win"
       );
 
-      heroTitleEl.textContent = "AI 完成本局";
-      heroDescEl.textContent =
-        data.stopReason || "搜索结束";
-
       updateButtons();
       return;
     }
@@ -1067,10 +987,6 @@ function handleWorkerMessage(event) {
 
     currentPlayer = HUMAN;
     aiThinking = false;
-
-    heroTitleEl.textContent = "轮到你了";
-    heroDescEl.textContent =
-      data.stopReason || "你执黑棋 · AI 执白棋";
 
     updateStatus();
     updateButtons();
@@ -1091,9 +1007,6 @@ function handleWorkerMessage(event) {
     aiReady = false;
 
     setStatus("AI 推理失败", "error");
-    heroTitleEl.textContent = "AI 推理失败";
-    heroDescEl.textContent =
-      data.message || "请检查模型与 Worker";
 
     updateButtons();
   }
@@ -1213,6 +1126,26 @@ reloadBtn.addEventListener("click", () => {
 
 restartBtn.addEventListener("click", () => {
   initGame();
+});
+
+difficultySelect.addEventListener("change", () => {
+  const selected = difficultySelect.value;
+
+  if (!DIFFICULTY_NAMES[selected]) {
+    return;
+  }
+
+  difficulty = selected;
+  localStorage.setItem("gomokuDifficulty", difficulty);
+
+  // 切换难度后开启新棋局，避免同一局中途改变 AI 强度。
+  initGame();
+
+  setStatus(
+    "已切换为 " + DIFFICULTY_NAMES[difficulty] + " 难度"
+  );
+
+  setTimeout(updateStatus, 650);
 });
 
 initApp();
