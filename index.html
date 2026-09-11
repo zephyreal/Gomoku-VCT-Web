@@ -5,21 +5,20 @@
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#07111f">
-  <title>五子棋 AI · Adaptive MCTS</title>
+  <title>五子棋 AI · 四档难度</title>
 
   <style>
     :root {
       --bg-0: #050b13;
       --bg-1: #07111f;
       --bg-2: #0b1b2f;
-      --panel: rgba(14, 28, 48, .72);
-      --panel-2: rgba(20, 39, 65, .62);
+      --panel: rgba(15, 31, 52, .72);
+      --panel-2: rgba(18, 37, 61, .72);
       --line: rgba(133, 190, 255, .18);
       --line-strong: rgba(133, 190, 255, .34);
       --text: #f4f8ff;
       --muted: #8fa4bc;
       --cyan: #58d6ff;
-      --blue: #3399ff;
       --green: #56e6c1;
       --danger: #ff7a8c;
       --shadow: 0 18px 50px rgba(0,0,0,.34);
@@ -65,7 +64,7 @@
 
     .app {
       width: min(100%, 760px);
-      padding: 10px 9px 14px;
+      padding: 7px 6px 10px;
       position: relative;
       z-index: 1;
     }
@@ -74,16 +73,14 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 7px;
+      gap: 8px;
+      margin-bottom: 5px;
     }
-
-    .brand-wrap { min-width: 0; }
 
     .brand {
       margin: 0;
       letter-spacing: .04em;
-      font-size: clamp(22px, 4.5vw, 30px);
+      font-size: clamp(21px, 4.5vw, 28px);
       font-weight: 780;
       line-height: 1.1;
     }
@@ -106,10 +103,10 @@
       flex: 0 0 auto;
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
+      gap: 6px;
+      padding: 5px 8px;
       border-radius: 999px;
-      font-size: 12px;
+      font-size: 8px;
       color: #cfe8ff;
       background: rgba(11,25,43,.74);
       border: 1px solid var(--line);
@@ -117,21 +114,143 @@
     }
 
     .engine-dot i {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       display: block;
       background: var(--green);
       box-shadow: 0 0 12px rgba(86,230,193,.8);
     }
 
-    .hero {
+    .metrics {
+      margin: 0 0 5px;
+      display: grid;
+      grid-template-columns: 1.28fr 1fr .85fr 1fr;
+      gap: 4px;
+      position: relative;
+      z-index: 5;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 5px 5px 4px;
+      border-radius: 10px;
+      background: var(--panel);
+      border: 1px solid rgba(133,190,255,.14);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+      position: relative;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 7px;
+      line-height: 1.1;
+      letter-spacing: .02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric-value {
+      margin-top: 2px;
+      font-size: 11px;
+      line-height: 1.15;
+      font-weight: 730;
+      color: #f5f9ff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric-sub {
+      margin-top: 1px;
+      color: #6f86a0;
+      font-size: 6px;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .difficulty-box {
+      position: relative;
+    }
+
+    .difficulty-trigger {
+      width: 100%;
+      margin-top: 1px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #f5f9ff;
+      text-align: left;
+      font: inherit;
+      font-size: 11px;
+      line-height: 1.15;
+      font-weight: 730;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+    }
+
+    .difficulty-trigger span:last-child {
+      color: var(--cyan);
+      font-size: 10px;
+      opacity: .9;
+    }
+
+    .difficulty-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      min-width: 100%;
+      border-radius: 12px;
+      padding: 4px;
+      background: rgba(8, 18, 31, .97);
+      border: 1px solid rgba(110, 182, 255, .24);
+      box-shadow:
+        0 12px 30px rgba(0,0,0,.35),
+        inset 0 1px 0 rgba(255,255,255,.03);
       display: none;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .difficulty-menu.open {
+      display: block;
+    }
+
+    .difficulty-item {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: #deedff;
+      text-align: left;
+      padding: 8px 8px;
+      border-radius: 9px;
+      font: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      display: block;
+    }
+
+    .difficulty-item.active {
+      background: linear-gradient(180deg, rgba(25,106,170,.88), rgba(13,62,108,.88));
+      color: #ffffff;
+      box-shadow: 0 0 0 1px rgba(97,195,255,.25) inset;
+    }
+
+    .difficulty-item:not(.active):hover,
+    .difficulty-item:not(.active):focus-visible {
+      background: rgba(47, 93, 145, .24);
+      outline: none;
     }
 
     .board-shell {
-      padding: 5px;
-      border-radius: 18px;
+      padding: 4px;
+      border-radius: 15px;
       background:
         linear-gradient(180deg,
           rgba(40,67,94,.38),
@@ -141,8 +260,8 @@
     }
 
     .board-inner {
-      padding: 4px;
-      border-radius: 14px;
+      padding: 3px;
+      border-radius: 12px;
       background:
         linear-gradient(135deg,
           #e1b46d,
@@ -157,68 +276,21 @@
       display: block;
       width: 100%;
       aspect-ratio: 1 / 1;
-      border-radius: 12px;
+      border-radius: 10px;
       touch-action: none;
       user-select: none;
     }
 
-    .metrics {
-      margin: 0 0 7px;
-      display: grid;
-      grid-template-columns: 1.25fr 1fr .85fr 1fr;
-      gap: 5px;
-    }
-
-    .metric {
-      min-width: 0;
-      padding: 7px 7px 6px;
-      border-radius: 11px;
-      background: rgba(15, 31, 52, .68);
-      border: 1px solid rgba(133,190,255,.14);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
-    }
-
-    .metric-label {
-      color: var(--muted);
-      font-size: 8px;
-      line-height: 1.1;
-      letter-spacing: .02em;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .metric-value {
-      margin-top: 2px;
-      font-size: 12px;
-      line-height: 1.15;
-      font-weight: 730;
-      color: #f5f9ff;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .metric-sub {
-      margin-top: 1px;
-      color: #6f86a0;
-      font-size: 7px;
-      line-height: 1.1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
     .status-line {
-      margin-top: 6px;
-      min-height: 32px;
+      margin-top: 5px;
+      min-height: 29px;
       display: flex;
       justify-content: center;
       align-items: center;
       text-align: center;
-      padding: 5px 10px;
+      padding: 4px 8px;
       border-radius: 10px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 690;
       color: #dfeeff;
       background: rgba(8,19,33,.68);
@@ -233,15 +305,15 @@
     .actions {
       display: grid;
       grid-template-columns: 1fr 1.2fr 1fr;
-      gap: 6px;
-      margin-top: 7px;
+      gap: 5px;
+      margin-top: 5px;
     }
 
-    button {
-      min-height: 40px;
+    button.action-btn {
+      min-height: 37px;
       border: 1px solid rgba(134,181,228,.20);
       border-radius: 11px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       color: #dcecff;
       cursor: pointer;
@@ -252,14 +324,14 @@
       box-shadow:
         inset 0 1px 0 rgba(255,255,255,.04),
         0 10px 26px rgba(0,0,0,.14);
-      transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease;
+      transition: transform .14s ease;
     }
 
-    button:active:not(:disabled) {
+    button.action-btn:active:not(:disabled) {
       transform: translateY(1px) scale(.995);
     }
 
-    button:disabled {
+    button.action-btn:disabled {
       opacity: .42;
       cursor: default;
     }
@@ -276,132 +348,48 @@
         0 0 24px rgba(49,164,255,.14);
     }
 
-    .difficulty-select {
-      width: 100%;
-      margin-top: 1px;
-      padding: 0;
-      border: 0;
-      outline: 0;
-      appearance: none;
-      -webkit-appearance: none;
-      background: transparent;
-      color: #f5f9ff;
-      font: inherit;
-      font-size: 12px;
-      font-weight: 730;
-      cursor: pointer;
-    }
-
-    .difficulty-select option {
-      color: #111;
-      background: #fff;
-    }
-
-    .difficulty-wrap {
-      position: relative;
-    }
-
-    .difficulty-wrap::after {
-      content: "⌄";
-      position: absolute;
-      right: 0;
-      top: 3px;
-      color: #58d6ff;
-      font-size: 15px;
-      pointer-events: none;
-    }
-
     .footnote {
-      margin-top: 6px;
+      margin-top: 5px;
       text-align: center;
       color: #526981;
-      font-size: 8px;
+      font-size: 7px;
       line-height: 1.35;
       letter-spacing: .04em;
     }
 
-    @media (max-width: 560px) {
+    @media (min-width: 561px) {
       .app {
-        padding: 7px 6px 9px;
-      }
-
-      .topbar {
-        margin-bottom: 5px;
-      }
-
-      .brand {
-        font-size: 21px;
-      }
-
-      .brand-sub {
-        display: none;
-      }
-
-      .engine-dot {
-        padding: 5px 7px;
-        font-size: 8px;
-      }
-
-      .metrics {
-        grid-template-columns: 1.25fr 1fr .85fr 1fr;
-        gap: 4px;
-        margin-bottom: 5px;
-      }
-
-      .metric {
-        padding: 5px 5px 4px;
-        border-radius: 9px;
+        padding: 9px 8px 12px;
       }
 
       .metric-label {
-        font-size: 7px;
+        font-size: 8px;
       }
 
-      .metric-value,
-      .difficulty-select {
-        font-size: 11px;
+      .metric-value, .difficulty-trigger {
+        font-size: 12px;
       }
 
       .metric-sub {
-        font-size: 6px;
+        font-size: 7px;
       }
 
-      .difficulty-wrap::after {
-        font-size: 11px;
-        top: 0;
-      }
-
-      .board-shell {
-        padding: 4px;
-        border-radius: 15px;
-      }
-
-      .board-inner {
-        padding: 3px;
-        border-radius: 12px;
+      .difficulty-item {
+        font-size: 12px;
       }
 
       .status-line {
-        margin-top: 5px;
-        min-height: 29px;
-        font-size: 11px;
-        padding: 4px 8px;
+        font-size: 12px;
+        min-height: 32px;
       }
 
-      .actions {
-        gap: 5px;
-        margin-top: 5px;
-      }
-
-      button {
-        min-height: 37px;
-        font-size: 11px;
-        padding: 0 5px;
+      button.action-btn {
+        min-height: 40px;
+        font-size: 12px;
       }
 
       .footnote {
-        margin-top: 5px;
-        font-size: 7px;
+        font-size: 8px;
       }
     }
   </style>
@@ -411,7 +399,7 @@
 <div class="app">
 
   <header class="topbar">
-    <div class="brand-wrap">
+    <div>
       <h1 class="brand">五子棋 <span>AI</span></h1>
       <div class="brand-sub">标准对局 · 15×15</div>
     </div>
@@ -425,13 +413,17 @@
   <section class="metrics">
     <div class="metric">
       <div class="metric-label">当前模式</div>
-      <div class="difficulty-wrap">
-        <select id="difficultySelect" class="difficulty-select" aria-label="AI 难度">
-          <option value="rookie">菜鸟</option>
-          <option value="beginner" selected>新手</option>
-          <option value="expert">专家</option>
-          <option value="master">大师</option>
-        </select>
+      <div class="difficulty-box">
+        <button id="difficultyTrigger" class="difficulty-trigger" type="button" aria-haspopup="true" aria-expanded="false">
+          <span id="difficultyText">新手</span>
+          <span>⌄</span>
+        </button>
+        <div id="difficultyMenu" class="difficulty-menu" role="menu" aria-label="AI难度">
+          <button class="difficulty-item" data-difficulty="rookie" type="button">菜鸟</button>
+          <button class="difficulty-item" data-difficulty="beginner" type="button">新手</button>
+          <button class="difficulty-item" data-difficulty="expert" type="button">专家</button>
+          <button class="difficulty-item" data-difficulty="master" type="button">大师</button>
+        </div>
       </div>
       <div class="metric-sub">标准对局 · 15×15</div>
     </div>
@@ -464,15 +456,14 @@
   <div id="status" class="status-line loading">正在加载 AI...</div>
 
   <div class="actions">
-    <button id="undoBtn">↶ 悔棋</button>
-    <button id="reloadBtn">◉ 重新加载 AI</button>
-    <button id="restartBtn">↻ 重新开始</button>
+    <button class="action-btn" id="undoBtn">↶ 悔棋</button>
+    <button class="action-btn" id="reloadBtn">◉ 重新加载 AI</button>
+    <button class="action-btn" id="restartBtn">↻ 重新开始</button>
   </div>
 
   <div class="footnote">
-    UINT8 · WASM · 147 KB · 大师模式 Adaptive MCTS 50/100/150
+    UINT8 · WASM · 147 KB · 大师模式 Adaptive MCTS 50→100→150
   </div>
-
 </div>
 
 <script>
@@ -483,34 +474,24 @@ const EMPTY = 0;
 const HUMAN = 1;
 const AI = 2;
 
-const AI_WORKER_URL = "./ai-worker.js?v=tech-ui-20260911-1";
+const AI_WORKER_URL = "./ai-worker.js?v=dark-dd-20260911-1";
 
 const canvas = document.getElementById("board");
 const ctx = canvas.getContext("2d");
 
 const statusEl = document.getElementById("status");
-
 const timeMetricEl = document.getElementById("timeMetric");
 const simsMetricEl = document.getElementById("simsMetric");
 const valueMetricEl = document.getElementById("valueMetric");
-const difficultySelect = document.getElementById("difficultySelect");
 
 const undoBtn = document.getElementById("undoBtn");
 const reloadBtn = document.getElementById("reloadBtn");
 const restartBtn = document.getElementById("restartBtn");
 
-let board = [];
-let history = [];
-
-let currentPlayer = HUMAN;
-let gameOver = false;
-let aiThinking = false;
-let lastMove = null;
-
-let aiWorker = null;
-let aiReady = false;
-let lastAIValue = null;
-let pendingSearchId = 0;
+const difficultyTrigger = document.getElementById("difficultyTrigger");
+const difficultyText = document.getElementById("difficultyText");
+const difficultyMenu = document.getElementById("difficultyMenu");
+const difficultyItems = Array.from(document.querySelectorAll(".difficulty-item"));
 
 const DIFFICULTY_NAMES = {
   rookie: "菜鸟",
@@ -519,14 +500,18 @@ const DIFFICULTY_NAMES = {
   master: "大师"
 };
 
-let difficulty =
-  localStorage.getItem("gomokuDifficulty") || "beginner";
+let difficulty = localStorage.getItem("gomokuDifficulty") || "beginner";
+if (!DIFFICULTY_NAMES[difficulty]) difficulty = "beginner";
 
-if (!DIFFICULTY_NAMES[difficulty]) {
-  difficulty = "beginner";
-}
-
-difficultySelect.value = difficulty;
+let board = [];
+let history = [];
+let currentPlayer = HUMAN;
+let gameOver = false;
+let aiThinking = false;
+let lastMove = null;
+let aiWorker = null;
+let aiReady = false;
+let pendingSearchId = 0;
 
 function setStatus(text, cls = "") {
   statusEl.textContent = text;
@@ -534,11 +519,29 @@ function setStatus(text, cls = "") {
   if (cls) statusEl.classList.add(cls);
 }
 
-function updateHero() {}
+function syncDifficultyUI() {
+  difficultyText.textContent = DIFFICULTY_NAMES[difficulty];
+  for (const item of difficultyItems) {
+    item.classList.toggle("active", item.dataset.difficulty === difficulty);
+  }
+}
+
+function openDifficultyMenu() {
+  difficultyMenu.classList.add("open");
+  difficultyTrigger.setAttribute("aria-expanded", "true");
+}
+
+function closeDifficultyMenu() {
+  difficultyMenu.classList.remove("open");
+  difficultyTrigger.setAttribute("aria-expanded", "false");
+}
+
+function toggleDifficultyMenu() {
+  if (difficultyMenu.classList.contains("open")) closeDifficultyMenu();
+  else openDifficultyMenu();
+}
 
 function updateStatus() {
-  updateHero();
-
   if (gameOver) return;
 
   if (!aiReady) {
@@ -580,9 +583,7 @@ function updateMetrics(data) {
       : "—";
 
   simsMetricEl.textContent =
-    Number.isFinite(sims)
-      ? String(sims)
-      : "—";
+    Number.isFinite(sims) ? String(sims) : "—";
 
   valueMetricEl.textContent =
     Number.isFinite(data.rootValue)
@@ -591,17 +592,12 @@ function updateMetrics(data) {
 }
 
 function initGame() {
-  board = Array.from(
-    { length: SIZE },
-    () => Array(SIZE).fill(EMPTY)
-  );
-
+  board = Array.from({ length: SIZE }, () => Array(SIZE).fill(EMPTY));
   history = [];
   currentPlayer = HUMAN;
   gameOver = false;
   aiThinking = false;
   lastMove = null;
-  lastAIValue = null;
   pendingSearchId++;
 
   resetMetrics();
@@ -620,15 +616,12 @@ function destroyAIWorker() {
 
 function loadAIWorker() {
   destroyAIWorker();
-
-  setStatus("正在加载 147 KB UINT8 AI...", "loading");
-  updateHero();
+  setStatus("正在加载 AI...", "loading");
 
   const worker = new Worker(AI_WORKER_URL);
   aiWorker = worker;
 
   worker.onmessage = handleWorkerMessage;
-
   worker.onerror = (event) => {
     console.error("AI worker error:", event);
     if (worker !== aiWorker) return;
@@ -643,6 +636,7 @@ function loadAIWorker() {
 }
 
 function initApp() {
+  syncDifficultyUI();
   initGame();
   loadAIWorker();
 }
@@ -668,14 +662,12 @@ function getBoardGeometry() {
 
 function drawBoard() {
   const { w, margin, gap } = getBoardGeometry();
-
   ctx.clearRect(0, 0, w, w);
 
   const wood = ctx.createLinearGradient(0, 0, w, w);
   wood.addColorStop(0, "#e2b76f");
   wood.addColorStop(.48, "#c8914c");
   wood.addColorStop(1, "#d9a65f");
-
   ctx.fillStyle = wood;
   ctx.fillRect(0, 0, w, w);
 
@@ -683,39 +675,31 @@ function drawBoard() {
   ctx.globalAlpha = .07;
   ctx.strokeStyle = "#6f3f16";
   ctx.lineWidth = 1;
-
   for (let k = 0; k < 24; k++) {
     const y = (k + .5) * w / 24;
     ctx.beginPath();
     ctx.moveTo(0, y);
-    ctx.bezierCurveTo(w*.25, y-3, w*.65, y+4, w, y-1);
+    ctx.bezierCurveTo(w * .25, y - 3, w * .65, y + 4, w, y - 1);
     ctx.stroke();
   }
   ctx.restore();
 
   ctx.strokeStyle = "rgba(36,28,20,.82)";
   ctx.lineWidth = 1;
-
   for (let i = 0; i < SIZE; i++) {
     const p = margin + i * gap;
-
     ctx.beginPath();
     ctx.moveTo(margin, p);
     ctx.lineTo(w - margin, p);
     ctx.stroke();
-
     ctx.beginPath();
     ctx.moveTo(p, margin);
     ctx.lineTo(p, w - margin);
     ctx.stroke();
   }
 
-  const stars = [
-    [3,3], [11,3], [7,7], [3,11], [11,11]
-  ];
-
+  const stars = [[3,3],[11,3],[7,7],[3,11],[11,11]];
   ctx.fillStyle = "#201813";
-
   for (const [x, y] of stars) {
     ctx.beginPath();
     ctx.arc(
@@ -750,7 +734,6 @@ function drawBoard() {
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
-
     ctx.restore();
   }
 }
@@ -779,35 +762,23 @@ function drawStone(x, y, color, margin, gap) {
   }
 
   ctx.save();
-  ctx.shadowColor =
-    color === HUMAN
-      ? "rgba(0,0,0,.48)"
-      : "rgba(0,0,0,.24)";
+  ctx.shadowColor = color === HUMAN ? "rgba(0,0,0,.48)" : "rgba(0,0,0,.24)";
   ctx.shadowBlur = gap * .16;
   ctx.shadowOffsetY = gap * .08;
-
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = gradient;
   ctx.fill();
   ctx.restore();
 
-  ctx.strokeStyle =
-    color === HUMAN
-      ? "rgba(0,0,0,.82)"
-      : "rgba(82,88,94,.65)";
+  ctx.strokeStyle = color === HUMAN ? "rgba(0,0,0,.82)" : "rgba(82,88,94,.65)";
   ctx.lineWidth = 1;
   ctx.stroke();
 }
 
 function placeMove(x, y, color, source) {
-  if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) {
-    return false;
-  }
-
-  if (board[y][x] !== EMPTY) {
-    return false;
-  }
+  if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) return false;
+  if (board[y][x] !== EMPTY) return false;
 
   board[y][x] = color;
   history.push({ x, y, color, source });
@@ -819,42 +790,31 @@ function placeMove(x, y, color, source) {
 }
 
 function handleBoardPointer(e) {
+  closeDifficultyMenu();
+
   if (!aiReady) {
     setStatus("AI 模型尚未加载完成", "loading");
     return;
   }
 
-  if (
-    gameOver ||
-    aiThinking ||
-    currentPlayer !== HUMAN
-  ) {
-    return;
-  }
+  if (gameOver || aiThinking || currentPlayer !== HUMAN) return;
 
   const rect = canvas.getBoundingClientRect();
   const { margin, gap } = getBoardGeometry();
-
   const px = e.clientX - rect.left;
   const py = e.clientY - rect.top;
 
   const x = Math.round((px - margin) / gap);
   const y = Math.round((py - margin) / gap);
 
-  if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) {
-    return;
-  }
-
-  if (board[y][x] !== EMPTY) {
-    return;
-  }
+  if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) return;
+  if (board[y][x] !== EMPTY) return;
 
   placeMove(x, y, HUMAN, "human");
 
   if (checkWin(x, y, HUMAN)) {
     gameOver = true;
     setStatus("你获胜了！", "win");
-    updateHero();
     updateButtons();
     return;
   }
@@ -862,38 +822,27 @@ function handleBoardPointer(e) {
   if (isBoardFull()) {
     gameOver = true;
     setStatus("平局。", "win");
-    updateHero();
     updateButtons();
     return;
   }
 
   currentPlayer = AI;
   updateStatus();
-
   setTimeout(normalAIMove, 45);
 }
 
 function boardToFlat() {
   const flat = new Int8Array(SIZE * SIZE);
-
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
       flat[y * SIZE + x] = board[y][x];
     }
   }
-
   return flat;
 }
 
 function normalAIMove() {
-  if (
-    !aiReady ||
-    !aiWorker ||
-    gameOver ||
-    currentPlayer !== AI
-  ) {
-    return;
-  }
+  if (!aiReady || !aiWorker || gameOver || currentPlayer !== AI) return;
 
   aiThinking = true;
   updateStatus();
@@ -915,46 +864,29 @@ function handleWorkerMessage(event) {
 
   if (data.type === "ready") {
     aiReady = true;
-
     updateStatus();
     updateButtons();
     return;
   }
 
   if (data.type === "progress") {
-    if (!aiThinking || data.searchId !== pendingSearchId) {
-      return;
-    }
-
+    if (!aiThinking || data.searchId !== pendingSearchId) return;
     simsMetricEl.textContent = String(data.simulations);
-
-    setStatus(
-      "AI 思考中 · 已搜索 " + data.simulations + " 次",
-      "ai"
-    );
+    setStatus("AI 思考中 · 已搜索 " + data.simulations + " 次", "ai");
     return;
   }
 
   if (data.type === "result") {
-    if (!aiThinking || data.searchId !== pendingSearchId) {
-      return;
-    }
+    if (!aiThinking || data.searchId !== pendingSearchId) return;
 
     const x = data.x | 0;
     const y = data.y | 0;
-
-    lastAIValue =
-      Number.isFinite(data.rootValue)
-        ? data.rootValue
-        : null;
-
     updateMetrics(data);
 
-    if (!placeMove(x, y, AI, data.source || "adaptive-mcts")) {
+    if (!placeMove(x, y, AI, data.source || "ai")) {
       aiThinking = false;
       currentPlayer = HUMAN;
       setStatus("AI 返回了非法落子", "error");
-      updateHero();
       updateButtons();
       return;
     }
@@ -962,16 +894,7 @@ function handleWorkerMessage(event) {
     if (checkWin(x, y, AI)) {
       gameOver = true;
       aiThinking = false;
-
-      setStatus(
-        "AI 获胜 · " +
-        data.simulations +
-        " sims · " +
-        data.elapsedMs.toFixed(0) +
-        " ms",
-        "win"
-      );
-
+      setStatus("AI 获胜 · " + data.simulations + " sims · " + data.elapsedMs.toFixed(0) + " ms", "win");
       updateButtons();
       return;
     }
@@ -980,118 +903,69 @@ function handleWorkerMessage(event) {
       gameOver = true;
       aiThinking = false;
       setStatus("平局。", "win");
-      updateHero();
       updateButtons();
       return;
     }
 
     currentPlayer = HUMAN;
     aiThinking = false;
-
-    updateStatus();
+    setStatus((data.stopReason || "AI 已完成落子"), "ai");
     updateButtons();
     return;
   }
 
   if (data.type === "error") {
-    if (
-      data.searchId !== undefined &&
-      data.searchId !== pendingSearchId
-    ) {
-      return;
-    }
-
+    if (data.searchId !== undefined && data.searchId !== pendingSearchId) return;
     console.error("AI worker reported error:", data);
-
     aiThinking = false;
     aiReady = false;
-
-    setStatus("AI 推理失败", "error");
-
+    setStatus("AI 推理失败：" + (data.message || "未知错误"), "error");
     updateButtons();
   }
 }
 
 function checkWin(x, y, player) {
-  const dirs = [
-    [1,0],
-    [0,1],
-    [1,1],
-    [1,-1]
-  ];
-
+  const dirs = [[1,0],[0,1],[1,1],[1,-1]];
   for (const [dx, dy] of dirs) {
     let count = 1;
-
     for (let step = 1; step < 5; step++) {
       const nx = x + dx * step;
       const ny = y + dy * step;
-
-      if (
-        nx >= 0 && nx < SIZE &&
-        ny >= 0 && ny < SIZE &&
-        board[ny][nx] === player
-      ) {
-        count++;
-      } else {
-        break;
-      }
+      if (nx >= 0 && nx < SIZE && ny >= 0 && ny < SIZE && board[ny][nx] === player) count++;
+      else break;
     }
-
     for (let step = 1; step < 5; step++) {
       const nx = x - dx * step;
       const ny = y - dy * step;
-
-      if (
-        nx >= 0 && nx < SIZE &&
-        ny >= 0 && ny < SIZE &&
-        board[ny][nx] === player
-      ) {
-        count++;
-      } else {
-        break;
-      }
+      if (nx >= 0 && nx < SIZE && ny >= 0 && ny < SIZE && board[ny][nx] === player) count++;
+      else break;
     }
-
-    if (count >= 5) {
-      return true;
-    }
+    if (count >= 5) return true;
   }
-
   return false;
 }
 
 function isBoardFull() {
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
-      if (board[y][x] === EMPTY) {
-        return false;
-      }
+      if (board[y][x] === EMPTY) return false;
     }
   }
   return true;
 }
 
 function undoHumanAIPair() {
-  if (aiThinking || history.length === 0) {
-    return;
-  }
+  if (aiThinking || history.length === 0) return;
 
   gameOver = false;
   pendingSearchId++;
 
-  if (
-    history.length > 0 &&
-    history[history.length - 1].color === AI
-  ) {
+  if (history.length > 0 && history[history.length - 1].color === AI) {
     const m = history.pop();
     board[m.y][m.x] = EMPTY;
   }
 
-  if (
-    history.length > 0 &&
-    history[history.length - 1].color === HUMAN
-  ) {
+  if (history.length > 0 && history[history.length - 1].color === HUMAN) {
     const m = history.pop();
     board[m.y][m.x] = EMPTY;
   }
@@ -1104,9 +978,7 @@ function undoHumanAIPair() {
   }
 
   currentPlayer = HUMAN;
-  lastAIValue = null;
   resetMetrics();
-
   drawBoard();
   updateStatus();
   updateButtons();
@@ -1118,6 +990,7 @@ window.addEventListener("resize", resizeCanvas);
 undoBtn.addEventListener("click", undoHumanAIPair);
 
 reloadBtn.addEventListener("click", () => {
+  closeDifficultyMenu();
   pendingSearchId++;
   aiThinking = false;
   loadAIWorker();
@@ -1125,27 +998,34 @@ reloadBtn.addEventListener("click", () => {
 });
 
 restartBtn.addEventListener("click", () => {
+  closeDifficultyMenu();
   initGame();
 });
 
-difficultySelect.addEventListener("change", () => {
-  const selected = difficultySelect.value;
+difficultyTrigger.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleDifficultyMenu();
+});
 
-  if (!DIFFICULTY_NAMES[selected]) {
-    return;
+difficultyItems.forEach((item) => {
+  item.addEventListener("click", () => {
+    const selected = item.dataset.difficulty;
+    if (!DIFFICULTY_NAMES[selected]) return;
+
+    difficulty = selected;
+    localStorage.setItem("gomokuDifficulty", difficulty);
+    syncDifficultyUI();
+    closeDifficultyMenu();
+    initGame();
+    setStatus("已切换为 " + DIFFICULTY_NAMES[difficulty] + " 难度");
+    setTimeout(updateStatus, 650);
+  });
+});
+
+document.addEventListener("click", (e) => {
+  if (!difficultyMenu.contains(e.target) && !difficultyTrigger.contains(e.target)) {
+    closeDifficultyMenu();
   }
-
-  difficulty = selected;
-  localStorage.setItem("gomokuDifficulty", difficulty);
-
-  // 切换难度后开启新棋局，避免同一局中途改变 AI 强度。
-  initGame();
-
-  setStatus(
-    "已切换为 " + DIFFICULTY_NAMES[difficulty] + " 难度"
-  );
-
-  setTimeout(updateStatus, 650);
 });
 
 initApp();
